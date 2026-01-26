@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<BorderPane prefHeight="600.0" prefWidth="900.0" stylesheets="@styles.css" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.myriadimg.ui.NewProjectController">
+   <center>
+      <VBox alignment="CENTER" maxWidth="600.0" spacing="30.0" BorderPane.alignment="CENTER">
+         <children>
+            <Label styleClass="label-header" text="Nouveau Projet" />
+
+            <VBox spacing="20.0" style="-fx-background-color: #FFFFFF; -fx-padding: 40; -fx-background-radius: 12; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.08), 10, 0, 0, 4); -fx-border-color: #E9ECEF; -fx-border-radius: 12;">
+               <children>
+                  <VBox spacing="8.0">
+                     <children>
+                        <Label style="-fx-font-weight: bold; -fx-text-fill: #495057;" text="Nom du projet" />
+                        <TextField fx:id="nameField" promptText="Ex: Vacances 2023" styleClass="text-field-modern" />
+                     </children>
+                  </VBox>
+
+                  <VBox spacing="8.0">
+                     <children>
+                        <Label style="-fx-font-weight: bold; -fx-text-fill: #495057;" text="Dossier Source" />
+                        <HBox spacing="10.0" alignment="CENTER_LEFT">
+                           <children>
+                              <TextField fx:id="pathField" editable="false" promptText="Sélectionnez un dossier..." styleClass="text-field-modern" HBox.hgrow="ALWAYS" />
+                              <Button mnemonicParsing="false" onAction="#onBrowse" styleClass="button-browse" text="..." prefHeight="38" prefWidth="40" />
+                           </children>
+                        </HBox>
+                     </children>
+                  </VBox>
+               </children>
+            </VBox>
+
+            <HBox alignment="CENTER_RIGHT" spacing="15.0">
+               <children>
+                  <Button mnemonicParsing="false" onAction="#onCancel" styleClass="button-secondary" text="Annuler" />
+                  <Button mnemonicParsing="false" onAction="#onCreate" styleClass="button-primary" text="Créer le projet" />
+               </children>
+            </HBox>
+         </children>
+         <padding>
+            <Insets bottom="40.0" left="40.0" right="40.0" top="40.0" />
+         </padding>
+      </VBox>
+   </center>
+</BorderPane>

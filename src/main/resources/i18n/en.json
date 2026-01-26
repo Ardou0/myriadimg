@@ -1,0 +1,216 @@
+{
+  "app": {
+    "name": "MyriadImg",
+    "version": "v1.0.0",
+    "copyright": "© 2026 MyriadImg - Local & Private"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "empty_state": "No open projects",
+    "btn_new_project": "+ New Project",
+    "tooltip": {
+      "path": "Path: ",
+      "last_opened": "Last opened: "
+    },
+    "context_menu": {
+      "properties": "Properties",
+      "delete": "Remove project"
+    },
+    "toast": {
+      "error_load": "Unable to load projects.",
+      "error_access": "Folder \"{0}\" not found.",
+      "success_delete": "Project removed",
+      "success_update": "Project updated",
+      "title_error": "Error",
+      "title_success": "Success",
+      "title_info": "Information",
+      "title_inaccessible": "Inaccessible",
+      "path_copied": "Path copied to clipboard"
+    }
+  },
+  "project": {
+    "btn_back": "Dashboard",
+    "btn_scan": "Scan",
+    "btn_scan_running": "Scanning...",
+    "search_placeholder": "Search...",
+    "sort": {
+      "date_desc": "Date (Newest first)",
+      "date_asc": "Date (Oldest first)",
+      "name_asc": "Name (A-Z)"
+    },
+    "view_mode": {
+      "grid": "Grid",
+      "folders": "Folders",
+      "themes": "Themes"
+    },
+    "sidebar": {
+      "tags_ai": "Scenes (AI)",
+      "people": "People",
+      "tags_manual": "My Tags",
+      "details": "Details",
+      "no_selection": "No image selected",
+      "summary_label": "Total:",
+      "summary_value": "{0} images, {1} videos",
+      "warning_heic_title": "Limited Preview (HEIC/HEIF)",
+      "warning_heic_desc": "Apple proprietary format. Preview is generated in grayscale to comply with patent restrictions.",
+      "btn_open": "Open",
+      "btn_delete": "Delete",
+      "path_label": "Path:",
+      "tags_label": "Tags:"
+    },
+    "people": {
+      "unknown_group": "Unknown Group #{0}",
+      "btn_identify": "Identify"
+    },
+    "scan_status": {
+      "scanning": "Scan: {0} images found...",
+      "complete": "Scan complete."
+    },
+    "activity": {
+      "title": "BACKGROUND ACTIVITY",
+      "indexing": "Indexing:",
+      "thumbnails": "Thumbnails:",
+      "ai_analysis": "AI Analysis:",
+      "btn_relaunch": "Relaunch",
+      "btn_redo": "Redo",
+      "btn_start": "Start",
+      "status": {
+        "inactive": "Inactive",
+        "pending": "Pending",
+        "in_progress": "In progress",
+        "completed": "Completed",
+        "error": "Error"
+      }
+    },
+    "toast": {
+      "task_already_running": "A task is already running. Please wait for it to finish."
+    }
+  },
+  "about": {
+    "description": "Local and private photo/video archive management solution.",
+    "section_philosophy": "Philosophy",
+    "section_tech": "Technologies",
+    "section_ai": "Artificial Intelligence",
+    "section_issues": "Known Issues",
+    "btn_back": "← Back to Dashboard",
+    "data": {
+      "philosophy": [
+        "Privacy First",
+        "Read-Only Source",
+        "Zero-Cloud Dependency"
+      ],
+      "technologies": [
+        { "name": "Java 22", "role": "Core Language" },
+        { "name": "JavaFX", "role": "User Interface" },
+        { "name": "SQLite", "role": "Local Database" },
+        { "name": "Java NIO.2", "role": "High Perf. File IO" }
+      ],
+      "ai_models": [
+        { "name": "MobileNet V2", "type": "Scene Classification", "format": "ONNX" },
+        { "name": "Ultra-Light-Fast", "type": "Face Detection", "format": "1MB" },
+        { "name": "FaceNet / ArcFace", "type": "Face Recognition", "format": "Embedding" }
+      ],
+      "known_issues": [
+        "Most image formats are supported.",
+        "However, due to patents, Apple formats (HEIC/HEIF) have limited support.",
+        "Previews for these formats may appear in grayscale."
+      ]
+    }
+  },
+  "help": {
+    "title": "Quick Guide",
+    "btn_close": "Got it",
+    "steps": [
+      {
+        "id": "1",
+        "title": "Create Project",
+        "desc": "Click '+ New Project' and select a folder containing your photos."
+      },
+      {
+        "id": "2",
+        "title": "Open Project",
+        "desc": "Simply click on a card to explore your images."
+      },
+      {
+        "id": "3",
+        "title": "Organize",
+        "desc": "Click and hold a project to drag and reorder it."
+      },
+      {
+        "id": "4",
+        "title": "Manage",
+        "desc": "Right-click on a project to view properties or remove it."
+      },
+      {
+        "id": "5",
+        "title": "Background Activity",
+        "desc": "Long-running tasks (Scan, AI) continue in the system tray even if the window is closed."
+      },
+      {
+        "id": "6",
+        "title": "Adaptive Performance",
+        "desc": "The application automatically reduces CPU consumption if you switch windows to avoid slowing you down."
+      },
+      {
+        "id": "7",
+        "title": "Extended Compatibility",
+        "desc": "Native support for RAW, Video, and HEIC formats (with patent restrictions)."
+      },
+      {
+        "id": "8",
+        "title": "Monitoring & Logs",
+        "desc": "In case of issues, detailed logs are generated locally to assist with diagnosis."
+      }
+    ]
+  },
+  "welcome": {
+    "title": "Welcome to MyriadImg",
+    "subtitle": "Your local and private photo archive manager.",
+    "message": "Take control of your digital chaos without relying on the cloud.",
+    "btn_start": "Start Tutorial"
+  },
+  "dialogs": {
+    "delete": {
+      "title": "Remove Project?",
+      "message": "You are about to remove \"{0}\" from the list.\nFiles on your disk will NOT be deleted.",
+      "btn_cancel": "Cancel",
+      "btn_confirm": "Remove"
+    },
+    "properties": {
+      "title": "Project Properties",
+      "label_name": "Name",
+      "label_path": "Path",
+      "btn_browse": "...",
+      "btn_cancel": "Cancel",
+      "btn_save": "Save"
+    },
+    "thumbnails": {
+      "title": "Regenerate Thumbnails",
+      "message": "Do you want to regenerate everything?\nThis will clear all existing thumbnails.",
+      "btn_all": "Redo All",
+      "btn_missing": "Missing Only",
+      "btn_cancel": "Cancel"
+    },
+    "error_info": "Unable to open information."
+  },
+  "tray": {
+    "popup": {
+      "title": "Background Activity",
+      "no_tasks": "No active tasks."
+    },
+    "menu": {
+      "show": "Show MyriadImg",
+      "exit": "Exit"
+    },
+    "action": {
+      "show": "Show MyriadImg",
+      "exit": "Exit"
+    },
+    "status": {
+      "idle": "Idle",
+      "indexing": "Indexing in progress",
+      "thumbnails": "Generating thumbnails",
+      "ai": "AI Analysis in progress"
+    }
+  }
+}

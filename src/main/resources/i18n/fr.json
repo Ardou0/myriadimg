@@ -1,0 +1,216 @@
+{
+  "app": {
+    "name": "MyriadImg",
+    "version": "v1.0.0",
+    "copyright": "© 2026 MyriadImg - Local & Private"
+  },
+  "dashboard": {
+    "title": "Tableau de bord",
+    "empty_state": "Aucun projet ouvert",
+    "btn_new_project": "+ Nouveau Projet",
+    "tooltip": {
+      "path": "Chemin : ",
+      "last_opened": "Dernière ouverture : "
+    },
+    "context_menu": {
+      "properties": "Propriétés",
+      "delete": "Supprimer le projet"
+    },
+    "toast": {
+      "error_load": "Impossible de charger les projets.",
+      "error_access": "Le dossier \"{0}\" est introuvable.",
+      "success_delete": "Projet supprimé",
+      "success_update": "Projet mis à jour",
+      "title_error": "Erreur",
+      "title_success": "Succès",
+      "title_info": "Information",
+      "title_inaccessible": "Inaccessible",
+      "path_copied": "Chemin copié dans le presse-papier"
+    }
+  },
+  "project": {
+    "btn_back": "Dashboard",
+    "btn_scan": "Scanner",
+    "btn_scan_running": "Scan en cours...",
+    "search_placeholder": "Rechercher...",
+    "sort": {
+      "date_desc": "Date (Récent → Ancien)",
+      "date_asc": "Date (Ancien → Récent)",
+      "name_asc": "Nom (A-Z)"
+    },
+    "view_mode": {
+      "grid": "Grille",
+      "folders": "Dossiers",
+      "themes": "Thèmes"
+    },
+    "sidebar": {
+      "tags_ai": "Scènes (IA)",
+      "people": "Personnes",
+      "tags_manual": "Mes Tags",
+      "details": "Détails",
+      "no_selection": "Aucune image sélectionnée",
+      "summary_label": "Total :",
+      "summary_value": "{0} images, {1} vidéos",
+      "warning_heic_title": "Aperçu limité (HEIC/HEIF)",
+      "warning_heic_desc": "Format propriétaire Apple. L'aperçu est généré en nuances de gris pour respecter les contraintes de brevets.",
+      "btn_open": "Ouvrir",
+      "btn_delete": "Supprimer",
+      "path_label": "Chemin :",
+      "tags_label": "Tags :"
+    },
+    "people": {
+      "unknown_group": "Groupe Inconnu #{0}",
+      "btn_identify": "Identifier"
+    },
+    "scan_status": {
+      "scanning": "Scan : {0} images trouvées...",
+      "complete": "Scan terminé."
+    },
+    "activity": {
+      "title": "ACTIVITÉ EN ARRIÈRE-PLAN",
+      "indexing": "Indexation:",
+      "thumbnails": "Miniatures:",
+      "ai_analysis": "Analyse IA:",
+      "btn_relaunch": "Relancer",
+      "btn_redo": "Refaire",
+      "btn_start": "Démarrer",
+      "status": {
+        "inactive": "Inactif",
+        "pending": "En attente",
+        "in_progress": "En cours",
+        "completed": "Terminé",
+        "error": "Erreur"
+      }
+    },
+    "toast": {
+      "task_already_running": "Une tâche est déjà en cours. Veuillez attendre sa fin."
+    }
+  },
+  "about": {
+    "description": "Solution de gestion d'archives photos/vidéos locale et privée.",
+    "section_philosophy": "Philosophie",
+    "section_tech": "Technologies",
+    "section_ai": "Intelligence Artificielle",
+    "section_issues": "Problèmes Connus",
+    "btn_back": "← Retour au Dashboard",
+    "data": {
+      "philosophy": [
+        "Privacy First",
+        "Read-Only Source",
+        "Zero-Cloud Dependency"
+      ],
+      "technologies": [
+        { "name": "Java 22", "role": "Langage Core" },
+        { "name": "JavaFX", "role": "Interface Utilisateur" },
+        { "name": "SQLite", "role": "Base de données locale" },
+        { "name": "Java NIO.2", "role": "Gestion Fichiers Haute Perf." }
+      ],
+      "ai_models": [
+        { "name": "MobileNet V2", "type": "Classification de Scène", "format": "ONNX" },
+        { "name": "Ultra-Light-Fast", "type": "Détection de Visage", "format": "1MB" },
+        { "name": "FaceNet / ArcFace", "type": "Reconnaissance Faciale", "format": "Embedding" }
+      ],
+      "known_issues": [
+        "La plupart des formats d'image sont supportés.",
+        "Cependant, en raison de brevets, les formats Apple (HEIC/HEIF) ont un support limité.",
+        "Les prévisualisations pour ces formats peuvent apparaître en nuances de gris."
+      ]
+    }
+  },
+  "help": {
+    "title": "Guide Rapide",
+    "btn_close": "J'ai compris",
+    "steps": [
+      {
+        "id": "1",
+        "title": "Créer un projet",
+        "desc": "Cliquez sur '+ Nouveau Projet' et sélectionnez un dossier contenant vos photos."
+      },
+      {
+        "id": "2",
+        "title": "Ouvrir un projet",
+        "desc": "Cliquez simplement sur une carte pour explorer vos images."
+      },
+      {
+        "id": "3",
+        "title": "Organiser",
+        "desc": "Maintenez le clic sur un projet et glissez-le pour changer l'ordre."
+      },
+      {
+        "id": "4",
+        "title": "Gérer",
+        "desc": "Faites un clic droit sur un projet pour voir ses propriétés ou le supprimer."
+      },
+      {
+        "id": "5",
+        "title": "Activité en arrière-plan",
+        "desc": "Les tâches longues (Scan, IA) continuent dans la zone de notification (Tray) même si la fenêtre est fermée."
+      },
+      {
+        "id": "6",
+        "title": "Performance Adaptative",
+        "desc": "L'application réduit automatiquement sa consommation CPU si vous changez de fenêtre pour ne pas vous ralentir."
+      },
+      {
+        "id": "7",
+        "title": "Compatibilité Étendue",
+        "desc": "Support natif des formats RAW, Vidéos et HEIC (avec restrictions de brevet)."
+      },
+      {
+        "id": "8",
+        "title": "Suivi & Logs",
+        "desc": "En cas de problème, des journaux détaillés sont générés localement pour aider au diagnostic."
+      }
+    ]
+  },
+  "welcome": {
+    "title": "Bienvenue dans MyriadImg",
+    "subtitle": "Votre gestionnaire d'archives photos local et privé.",
+    "message": "Prenez le contrôle de votre chaos numérique sans dépendre du cloud.",
+    "btn_start": "Commencer le tutoriel"
+  },
+  "dialogs": {
+    "delete": {
+      "title": "Supprimer le projet ?",
+      "message": "Vous êtes sur le point de retirer \"{0}\" de la liste.\nLes fichiers sur votre disque ne seront pas supprimés.",
+      "btn_cancel": "Annuler",
+      "btn_confirm": "Supprimer"
+    },
+    "properties": {
+      "title": "Propriétés du projet",
+      "label_name": "Nom",
+      "label_path": "Chemin",
+      "btn_browse": "...",
+      "btn_cancel": "Annuler",
+      "btn_save": "Enregistrer"
+    },
+    "thumbnails": {
+      "title": "Régénération des miniatures",
+      "message": "Voulez-vous tout régénérer ?\nCela effacera toutes les miniatures existantes.",
+      "btn_all": "Tout refaire",
+      "btn_missing": "Manquants seulement",
+      "btn_cancel": "Annuler"
+    },
+    "error_info": "Impossible d'ouvrir les informations."
+  },
+  "tray": {
+    "popup": {
+      "title": "Activité en arrière-plan",
+      "no_tasks": "Aucune tâche en cours."
+    },
+    "menu": {
+      "show": "Afficher MyriadImg",
+      "exit": "Quitter"
+    },
+    "action": {
+      "show": "Afficher MyriadImg",
+      "exit": "Quitter"
+    },
+    "status": {
+      "idle": "Inactif",
+      "indexing": "Indexation en cours",
+      "thumbnails": "Génération de miniatures",
+      "ai": "Analyse IA en cours"
+    }
+  }
+}

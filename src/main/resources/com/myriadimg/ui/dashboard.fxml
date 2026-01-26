@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.MenuButton?>
+<?import javafx.scene.control.MenuItem?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.FlowPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+
+<StackPane fx:id="rootStackPane" stylesheets="@styles.css" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.myriadimg.ui.DashboardController">
+   <children>
+      <BorderPane prefHeight="600.0" prefWidth="900.0" style="-fx-background-color: #F4F6F8;">
+         <top>
+            <HBox alignment="CENTER_LEFT" spacing="15.0" BorderPane.alignment="CENTER">
+               <padding>
+                  <Insets left="20.0" right="20.0" top="20.0" />
+               </padding>
+               <children>
+                  <Button fx:id="infoButton" mnemonicParsing="false" onAction="#onInfoClicked" styleClass="info-button" text="i" />
+
+                  <StackPane HBox.hgrow="ALWAYS" />
+
+                  <!-- Language Selector -->
+                  <MenuButton fx:id="langButton" mnemonicParsing="false" styleClass="lang-button" text="FR">
+                    <items>
+                      <MenuItem mnemonicParsing="false" onAction="#onLangFr" text="Français" />
+                      <MenuItem mnemonicParsing="false" onAction="#onLangEn" text="English" />
+                    </items>
+                  </MenuButton>
+
+                  <Button fx:id="helpButton" mnemonicParsing="false" onAction="#onHelpClicked" styleClass="help-button" text="?" />
+               </children>
+            </HBox>
+         </top>
+         <center>
+            <VBox alignment="CENTER" spacing="30.0" BorderPane.alignment="CENTER">
+               <children>
+                  <Label fx:id="dashboardTitleLabel" styleClass="label-header" />
+
+                  <ScrollPane fx:id="scrollPane" fitToHeight="true" fitToWidth="true" hbarPolicy="NEVER" vbarPolicy="AS_NEEDED" VBox.vgrow="ALWAYS">
+                     <content>
+                        <FlowPane fx:id="projectsContainer" alignment="CENTER" hgap="25.0" prefWrapLength="800.0" vgap="25.0">
+                           <padding>
+                              <Insets bottom="20.0" left="20.0" right="20.0" top="20.0" />
+                           </padding>
+                        </FlowPane>
+                     </content>
+                  </ScrollPane>
+
+                  <Button fx:id="addProjectButton" mnemonicParsing="false" onAction="#onAddProject" styleClass="button-primary" />
+               </children>
+               <padding>
+                  <Insets bottom="50.0" left="50.0" right="50.0" top="10.0" />
+               </padding>
+            </VBox>
+         </center>
+      </BorderPane>
+
+      <!-- Toast Container (Initially Hidden) -->
+      <VBox fx:id="toastContainer" alignment="TOP_RIGHT" pickOnBounds="false" spacing="10.0" StackPane.alignment="TOP_RIGHT">
+         <padding>
+            <Insets bottom="30.0" left="20.0" right="20.0" top="20.0" />
+         </padding>
+      </VBox>
+
+      <!-- First Run Overlay -->
+      <VBox fx:id="firstRunOverlay" alignment="CENTER" spacing="20.0" style="-fx-background-color: rgba(0, 0, 0, 0.7);" visible="false">
+         <children>
+            <Label fx:id="welcomeTitle" style="-fx-font-size: 32px; -fx-font-weight: bold; -fx-text-fill: white;" />
+            <Label fx:id="welcomeSubtitle" style="-fx-font-size: 18px; -fx-text-fill: #e0e0e0;" />
+            <Label fx:id="welcomeMessage" style="-fx-font-size: 14px; -fx-text-fill: #c0c0c0;" />
+            <Button fx:id="startTutorialButton" onAction="#onStartTutorial" styleClass="button-primary" />
+         </children>
+      </VBox>
+   </children>
+</StackPane>

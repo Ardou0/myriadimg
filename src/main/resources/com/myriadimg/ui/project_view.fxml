@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ProgressBar?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.control.Separator?>
+<?import javafx.scene.control.Slider?>
+<?import javafx.scene.control.SplitPane?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.TitledPane?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.FlowPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+
+<StackPane fx:id="rootStackPane" stylesheets="@styles.css" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.myriadimg.ui.ProjectViewController">
+   <children>
+      <BorderPane fx:id="mainContentPane" style="-fx-background-color: #F4F6F8;">
+         <!-- TOP: Toolbar (Fixed) -->
+         <top>
+            <VBox style="-fx-background-color: white; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.05), 0, 0, 0, 2); -fx-border-color: transparent transparent #E9ECEF transparent;" BorderPane.alignment="CENTER">
+               <children>
+                  <HBox alignment="CENTER_LEFT" spacing="15.0">
+                     <padding>
+                        <Insets bottom="10.0" left="15.0" right="15.0" top="10.0" />
+                     </padding>
+                     <children>
+                        <!-- Critical elements set to minWidth="-Infinity" to prevent truncation -->
+                        <Button fx:id="backButton" minWidth="-Infinity" mnemonicParsing="false" onAction="#onBackClicked" styleClass="button-secondary" text="Dashboard" />
+                        <Label fx:id="projectNameLabel" minWidth="-Infinity" style="-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #333;" text="Project Name" />
+
+                        <Separator orientation="VERTICAL" />
+
+                        <Button fx:id="scanButton" minWidth="-Infinity" mnemonicParsing="false" onAction="#onScanClicked" styleClass="button-primary" text="Scanner" />
+
+                        <StackPane HBox.hgrow="ALWAYS" />
+
+                        <!-- View Mode Selector -->
+                        <ComboBox fx:id="viewModeCombo" minWidth="100.0" prefWidth="120.0" styleClass="combo-box-modern" />
+
+                        <TextField fx:id="searchField" minWidth="150.0" promptText="Rechercher..." styleClass="text-field-modern" />
+                        <ComboBox fx:id="sortCombo" minWidth="150.0" prefWidth="150.0" styleClass="combo-box-modern" />
+
+                        <Label minWidth="-Infinity" style="-fx-text-fill: #666;" text="Size:" />
+                        <Slider fx:id="thumbnailSizeSlider" blockIncrement="10.0" max="300.0" min="50.0" minWidth="100.0" styleClass="modern-slider" value="150.0" />
+                     </children>
+                  </HBox>
+               </children>
+            </VBox>
+         </top>
+
+         <!-- CENTER: Split Content -->
+         <center>
+            <SplitPane fx:id="mainSplitPane" dividerPositions="0.2, 0.8" style="-fx-background-color: transparent;">
+               <items>
+                  <!-- LEFT: Filters Sidebar -->
+                  <VBox minWidth="200.0" style="-fx-background-color: white;">
+                     <children>
+                        <ScrollPane fitToWidth="true" hbarPolicy="NEVER" styleClass="modern-scroll-pane" VBox.vgrow="ALWAYS">
+                           <content>
+                              <VBox spacing="10.0">
+                                 <padding>
+                                    <Insets bottom="10.0" left="10.0" right="10.0" top="10.0" />
+                                 </padding>
+                                 <children>
+                                    <TitledPane fx:id="aiTagsPane" animated="false" text="Scènes (IA)">
+                                       <content>
+                                          <VBox fx:id="aiTagsContainer" spacing="5.0" />
+                                       </content>
+                                    </TitledPane>
+
+                                    <TitledPane fx:id="peoplePane" animated="false" text="Personnes">
+                                       <content>
+                                          <VBox fx:id="peopleContainer" spacing="5.0" />
+                                       </content>
+                                    </TitledPane>
+
+                                    <TitledPane fx:id="manualTagsPane" animated="false" text="Mes Tags">
+                                       <content>
+                                          <VBox fx:id="manualTagsContainer" spacing="5.0" />
+                                       </content>
+                                    </TitledPane>
+                                 </children>
+                              </VBox>
+                           </content>
+                        </ScrollPane>
+
+                        <!-- Tasks Monitor Section -->
+                        <VBox spacing="8.0" style="-fx-border-color: #E9ECEF transparent transparent transparent; -fx-border-width: 1 0 0 0; -fx-padding: 15; -fx-background-color: #F8F9FA;">
+                           <children>
+                              <Label fx:id="activityTitleLabel" style="-fx-font-weight: bold; -fx-text-fill: #555; -fx-font-size: 11px;" text="ACTIVITÉ EN ARRIÈRE-PLAN" />
+
+                              <!-- Indexing Status -->
+                              <VBox spacing="2.0">
+                                 <HBox alignment="CENTER_LEFT" spacing="5">
+                                    <Label fx:id="activityIndexingLabel" text="Indexation:" style="-fx-font-size: 10px; -fx-text-fill: #666;" minWidth="60"/>
+                                    <Label fx:id="statusScanLabel" text="Inactif" styleClass="status-bubble, inactive" />
+                                    <StackPane HBox.hgrow="ALWAYS" />
+                                    <Button fx:id="activityIndexingButton" text="Relancer" styleClass="action-link" onAction="#onScanClicked" />
+                                 </HBox>
+                                 <ProgressBar fx:id="statusScanProgress" progress="0.0" maxWidth="Infinity" styleClass="small-progress-bar" style="-fx-pref-height: 4px;"/>
+                              </VBox>
+
+                              <!-- Thumbnails Status -->
+                              <VBox spacing="2.0">
+                                 <HBox alignment="CENTER_LEFT" spacing="5">
+                                    <Label fx:id="activityThumbnailsLabel" text="Miniatures:" style="-fx-font-size: 10px; -fx-text-fill: #666;" minWidth="60"/>
+                                    <Label fx:id="statusThumbLabel" text="Inactif" styleClass="status-bubble, inactive" />
+                                    <StackPane HBox.hgrow="ALWAYS" />
+                                    <Button fx:id="activityThumbnailsButton" text="Refaire" styleClass="action-link" onAction="#onRetryThumbnails" />
+                                 </HBox>
+                                 <ProgressBar fx:id="statusThumbProgress" progress="0.0" maxWidth="Infinity" styleClass="small-progress-bar" style="-fx-pref-height: 4px;"/>
+                              </VBox>
+
+                              <!-- AI Status (Future) -->
+                              <VBox spacing="2.0">
+                                 <HBox alignment="CENTER_LEFT" spacing="5">
+                                    <Label fx:id="activityAiLabel" text="Analyse IA:" style="-fx-font-size: 10px; -fx-text-fill: #666;" minWidth="60"/>
+                                    <Label fx:id="statusAiLabel" text="En attente" styleClass="status-bubble, inactive" />
+                                    <StackPane HBox.hgrow="ALWAYS" />
+                                    <Button fx:id="activityAiButton" text="Démarrer" styleClass="action-link" onAction="#onStartAiAnalysis" />
+                                 </HBox>
+                                 <ProgressBar fx:id="statusAiProgress" progress="0.0" maxWidth="Infinity" styleClass="small-progress-bar" style="-fx-pref-height: 4px;"/>
+                              </VBox>
+                           </children>
+                        </VBox>
+
+                        <!-- Summary Footer -->
+                        <VBox style="-fx-border-color: #E9ECEF transparent transparent transparent; -fx-border-width: 1 0 0 0; -fx-padding: 15;">
+                           <children>
+                              <Label fx:id="summaryLabel" style="-fx-font-weight: bold; -fx-text-fill: #333;" text="Total :" />
+                              <Label fx:id="summaryValue" style="-fx-text-fill: #666; -fx-font-size: 12px;" text="0 images" />
+                           </children>
+                        </VBox>
+                     </children>
+                  </VBox>
+
+                  <!-- CENTER: View Container (Replaces ScrollPane/FlowPane) -->
+                  <StackPane fx:id="viewContainer" BorderPane.alignment="CENTER" style="-fx-background-color: #F4F6F8;" />
+
+                  <!-- RIGHT: Details Sidebar -->
+                  <VBox minWidth="250.0" style="-fx-background-color: white;">
+                     <children>
+                        <Label fx:id="detailsTitleLabel" styleClass="section-header" text="Détails">
+                           <VBox.margin>
+                              <Insets left="15.0" top="15.0" />
+                           </VBox.margin>
+                        </Label>
+
+                        <ScrollPane fitToWidth="true" hbarPolicy="NEVER" styleClass="modern-scroll-pane" VBox.vgrow="ALWAYS">
+                           <content>
+                              <VBox fx:id="detailsContainer" spacing="15.0">
+                                 <padding>
+                                    <Insets bottom="15.0" left="15.0" right="15.0" top="15.0" />
+                                 </padding>
+                                 <children>
+                                    <!-- Placeholder for when no image is selected -->
+                                    <Label fx:id="noSelectionLabel" style="-fx-text-fill: #999; -fx-font-style: italic;" text="Aucune image sélectionnée" wrapText="true" />
+
+                                    <!-- Image Preview (Hidden by default) -->
+                                    <VBox fx:id="selectionDetailsBox" spacing="10.0" visible="false">
+                                       <children>
+                                          <!-- Large Preview Image -->
+                                          <StackPane style="-fx-background-color: #F8F9FA; -fx-border-color: #E9ECEF; -fx-border-radius: 4px;">
+                                             <children>
+                                                <ImageView fx:id="selectedImageView" fitHeight="200.0" fitWidth="220.0" pickOnBounds="true" preserveRatio="true" />
+                                             </children>
+                                             <padding>
+                                                <Insets bottom="10.0" left="10.0" right="10.0" top="10.0" />
+                                             </padding>
+                                          </StackPane>
+
+                                          <Label fx:id="selectedImageName" style="-fx-font-weight: bold;" text="IMG_001.jpg" wrapText="true" />
+                                          <Label fx:id="selectedImageDate" style="-fx-text-fill: #666; -fx-font-size: 12px;" text="24/10/2023 14:30" />
+
+                                          <!-- Path Section -->
+                                          <VBox spacing="2.0">
+                                             <Label fx:id="pathLabel" text="Path:" style="-fx-font-weight: bold; -fx-text-fill: #666; -fx-font-size: 12px;" />
+                                             <Label fx:id="selectedImagePath" style="-fx-text-fill: #0066CC; -fx-font-size: 11px; -fx-cursor: hand;" text="/path/to/image.jpg" wrapText="true" onMouseClicked="#onPathClicked"/>
+                                          </VBox>
+
+                                          <Separator />
+                                          <Label fx:id="tagsLabel" style="-fx-font-weight: bold; -fx-text-fill: #666; -fx-font-size: 12px;" text="Tags :" />
+                                          <FlowPane fx:id="selectedImageTags" hgap="5.0" vgap="5.0" />
+
+                                          <Separator />
+                                          <Button fx:id="openButton" maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onOpenClicked" styleClass="button-secondary" text="Ouvrir" />
+                                          <Button fx:id="deleteButton" maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onDeleteClicked" styleClass="button-danger" text="Supprimer" />
+                                       </children>
+                                    </VBox>
+                                 </children>
+                              </VBox>
+                           </content>
+                        </ScrollPane>
+                     </children>
+                  </VBox>
+               </items>
+            </SplitPane>
+         </center>
+      </BorderPane>
+
+      <!-- Confirmation Overlay -->
+      <VBox fx:id="confirmationOverlay" alignment="CENTER" spacing="15.0" style="-fx-background-color: rgba(0, 0, 0, 0.4);" visible="false">
+         <children>
+            <VBox alignment="CENTER" maxWidth="400.0" spacing="10.0" styleClass="modal-project-confirmation">
+               <children>
+                  <Label fx:id="confirmationTitle" style="-fx-font-size: 18px; -fx-font-weight: bold;" text="Title" />
+                  <Label fx:id="confirmationMessage" text="Message" textAlignment="CENTER" wrapText="true" />
+                  <HBox alignment="CENTER" spacing="10.0">
+                     <children>
+                        <Button fx:id="confirmAllButton" mnemonicParsing="false" styleClass="button-primary" text="Confirm All" />
+                        <Button fx:id="confirmMissingButton" mnemonicParsing="false" styleClass="button-secondary" text="Confirm Missing" />
+                        <Button fx:id="cancelButton" mnemonicParsing="false" styleClass="button-default" text="Cancel" />
+                     </children>
+                     <VBox.margin>
+                        <Insets top="15.0" />
+                     </VBox.margin>
+                  </HBox>
+               </children>
+            </VBox>
+         </children>
+      </VBox>
+
+      <!-- Toast Container -->
+      <VBox fx:id="toastContainer" alignment="TOP_RIGHT" pickOnBounds="false" spacing="10.0" StackPane.alignment="TOP_RIGHT">
+         <padding>
+            <Insets bottom="30.0" left="20.0" right="20.0" top="60.0" />
+         </padding>
+      </VBox>
+   </children>
+</StackPane>
