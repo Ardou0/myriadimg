@@ -1,7 +1,6 @@
 package com.myriadimg.service;
 
 import com.myriadimg.repository.ProjectDatabaseManager;
-import com.myriadimg.util.I18nService;
 import com.myriadimg.util.ProjectLogger;
 import javafx.concurrent.Service;
 import javafx.concurrent.Task;

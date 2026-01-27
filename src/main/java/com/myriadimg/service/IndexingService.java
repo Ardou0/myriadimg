@@ -2,7 +2,6 @@ package com.myriadimg.service;
 
 import com.myriadimg.model.Asset;
 import com.myriadimg.repository.ProjectDatabaseManager;
-import com.myriadimg.util.I18nService;
 import com.myriadimg.util.ProjectLogger;
 import javafx.concurrent.Task;
 
@@ -51,7 +50,8 @@ public class IndexingService extends Task<Void> implements ThrottlableService {
 
     @Override
     public String getStatus() {
-        String projectName = rootPath.getFileName().toString();
+        Path fileName = rootPath.getFileName();
+        String projectName = (fileName != null) ? fileName.toString() : rootPath.toString();
         return I18nService.getInstance().get("tray.status.indexing") + " (" + projectName + ")";
     }
     

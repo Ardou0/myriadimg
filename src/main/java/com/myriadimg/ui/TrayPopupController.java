@@ -2,14 +2,12 @@ package com.myriadimg.ui;
 
 import com.myriadimg.service.ServiceManager;
 import com.myriadimg.service.ThrottlableService;
-import com.myriadimg.util.I18nService;
+import com.myriadimg.service.I18nService;
 import javafx.fxml.FXML;
-import javafx.geometry.Insets;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 
@@ -37,6 +35,7 @@ public class TrayPopupController {
     /**
      * Injects the stages from the TrayManager.
      * This is called after the FXML is loaded.
+     * It also sets up a listener to hide the popup when it loses focus.
      */
     public void setStages(Stage popupStage, Stage primaryStage) {
         this.popupStage = popupStage;
@@ -72,6 +71,7 @@ public class TrayPopupController {
     /**
      * Refreshes the content of the popup with the latest status of active services.
      * This is called just before the popup is shown.
+     * It dynamically builds UI components to represent each active task.
      */
     public void refresh() {
         // Update static texts (buttons) in case language changed

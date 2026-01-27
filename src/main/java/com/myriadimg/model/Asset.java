@@ -2,9 +2,13 @@ package com.myriadimg.model;
 
 import java.time.LocalDateTime;
 
+/**
+ * Represents a digital asset (image or video) managed by the application.
+ * This is a lightweight POJO used to transfer data between layers.
+ */
 public class Asset {
     private String path; // Relative path from project root or absolute path
-    private String hash; // Partial MD5
+    private String hash; // Partial MD5 for deduplication
     private long size;
     private LocalDateTime creationDate;
     private AssetType type;

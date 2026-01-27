@@ -1,6 +1,5 @@
 package com.myriadimg.service;
 
-import com.myriadimg.util.I18nService;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;

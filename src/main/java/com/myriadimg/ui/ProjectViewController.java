@@ -7,7 +7,8 @@ import com.myriadimg.service.IndexingService;
 import com.myriadimg.service.ServiceManager;
 import com.myriadimg.service.ThrottlableService;
 import com.myriadimg.service.ThumbnailService;
-import com.myriadimg.util.I18nService;
+import com.myriadimg.service.I18nService;
+import com.myriadimg.util.ProjectLogger;
 import com.myriadimg.util.SettingsManager;
 import com.myriadimg.util.ToastUtil;
 import javafx.application.Platform;
@@ -20,26 +21,17 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.*;
-import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
-import javafx.scene.input.Clipboard;
-import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
-import javafx.scene.layout.FlowPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
-import javafx.scene.layout.StackPane;
-import javafx.scene.layout.VBox;
+import javafx.scene.layout.*;
 import javafx.stage.Stage;
 
-import java.awt.Desktop;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.Collectors;
 
 public class ProjectViewController {
 
@@ -80,31 +72,19 @@ public class ProjectViewController {
     @FXML private Label statusAiLabel;
     @FXML private ProgressBar statusAiProgress;
 
-    @FXML private Label summaryLabel;
-    @FXML private Label summaryValue;
-
     @FXML private StackPane viewContainer;
     
     // Grid View Components (Virtualization)
     private ListView<List<Asset>> gridListView;
     
-    // Folder View Components (Legacy)
-    private ScrollPane folderScrollPane;
-    private VBox folderContainer;
+    // Folder View Components (Virtualization)
+    private TreeView<Object> folderTreeView;
 
-    @FXML private VBox detailsContainer;
-    @FXML private Label detailsTitleLabel; // Added for translation
-    @FXML private Label noSelectionLabel;
-    @FXML private VBox selectionDetailsBox;
-    @FXML private ImageView selectedImageView;
-    @FXML private Label selectedImageName;
-    @FXML private Label selectedImageDate;
-    @FXML private Label pathLabel;
-    @FXML private Label selectedImagePath;
-    @FXML private Label tagsLabel;
-    @FXML private FlowPane selectedImageTags;
-    @FXML private Button openButton;
-    @FXML private Button deleteButton;
+    // Details Controller (Injected via fx:include)
+    @FXML private AssetDetailsController assetDetailsController;
+
+    @FXML private Label summaryLabel;
+    @FXML private Label summaryValue;
 
     // Confirmation Overlay
     @FXML private VBox confirmationOverlay;
@@ -124,7 +104,6 @@ public class ProjectViewController {
 
     // Cache of all assets to avoid re-querying DB on view switch
     private List<Asset> allAssets = new ArrayList<>();
-    private Asset selectedAsset;
     
     // Image Loading Management
     private final ExecutorService imageLoadExecutor = Executors.newFixedThreadPool(4, r -> {
@@ -137,32 +116,67 @@ public class ProjectViewController {
     public void setProject(Project project) {
         this.currentProject = project;
         projectNameLabel.setText(project.getName());
+        
+        if (assetDetailsController != null) {
+            assetDetailsController.setProject(project);
+        }
 
         // Initialize DB and Services in background to avoid UI freeze
         new Thread(() -> {
-            this.dbManager = new ProjectDatabaseManager(project.getPath());
-            this.thumbnailService = new ThumbnailService(Paths.get(project.getPath()), dbManager, 200);
-            
-            // Setup live update callback
-            this.thumbnailService.setOnThumbnailGenerated(this::onThumbnailGenerated);
+            try {
+                this.dbManager = new ProjectDatabaseManager(project.getPath());
 
-            Platform.runLater(() -> {
-                loadAssetsFromDb();
-                startThumbnailGeneration();
+                // Check for required scans (flags from DB migration or other sources)
+                boolean scanRequired = dbManager.isScanRequired();
+                boolean thumbRequired = dbManager.isThumbnailScanRequired();
+                boolean tagRequired = dbManager.isTagScanRequired();
+
+                // Reset flags immediately as we will trigger the actions
+                if (scanRequired) dbManager.setScanRequired(false);
+                if (thumbRequired) dbManager.setThumbnailScanRequired(false);
+                if (tagRequired) dbManager.setTagScanRequired(false);
+
+                this.thumbnailService = new ThumbnailService(Paths.get(project.getPath()), dbManager, 200);
                 
-                // Restore view mode from project settings
-                String savedMode = settings.getProjectViewMode(project.getPath());
-                // Map saved mode key to UI text
-                String uiMode = "grid".equals(savedMode) ? i18n.get("project.view_mode.grid") :
-                                "folders".equals(savedMode) ? i18n.get("project.view_mode.folders") :
-                                "themes".equals(savedMode) ? i18n.get("project.view_mode.themes") :
-                                i18n.get("project.view_mode.grid");
-                                
-                viewModeCombo.getSelectionModel().select(uiMode);
+                if (assetDetailsController != null) {
+                    assetDetailsController.setThumbnailService(thumbnailService);
+                }
                 
-                // Check for running services for THIS project and re-bind UI
-                checkAndBindRunningServices();
-            });
+                // Setup live update callback
+                this.thumbnailService.setOnThumbnailGenerated(this::onThumbnailGenerated);
+
+                Platform.runLater(() -> {
+                    loadAssetsFromDb();
+
+                    // Trigger required actions
+                    if (scanRequired) {
+                        onScanClicked();
+                    }
+
+                    // Always check for thumbnails (covers thumbRequired case where column was added)
+                    startThumbnailGeneration();
+
+                    if (tagRequired) {
+                        onStartAiAnalysis();
+                    }
+                    
+                    // Restore view mode from project settings
+                    String savedMode = settings.getProjectViewMode(project.getPath());
+                    // Map saved mode key to UI text
+                    String uiMode = "grid".equals(savedMode) ? i18n.get("project.view_mode.grid") :
+                                    "folders".equals(savedMode) ? i18n.get("project.view_mode.folders") :
+                                    "themes".equals(savedMode) ? i18n.get("project.view_mode.themes") :
+                                    i18n.get("project.view_mode.grid");
+                                    
+                    viewModeCombo.getSelectionModel().select(uiMode);
+                    
+                    // Check for running services for THIS project and re-bind UI
+                    checkAndBindRunningServices();
+                });
+            } catch (Exception e) {
+                ProjectLogger.logError(Paths.get(project.getPath()), "ProjectViewController", "Error initializing project", e);
+                Platform.runLater(() -> ToastUtil.show(toastContainer, i18n.get("dashboard.toast.title_error"), "Error loading project: " + e.getMessage(), true));
+            }
         }).start();
     }
     
@@ -179,9 +193,6 @@ public class ProjectViewController {
                     
                     statusScanLabel.textProperty().bind(service.messageProperty());
                     statusScanProgress.progressProperty().bind(service.progressProperty());
-                    
-                    // The service's messageProperty will handle the "in progress" status
-                    // updateStatusBubble(statusScanLabel, i18n.get("project.activity.status.in_progress"), "active");
                     
                     ((IndexingService) service).stateProperty().addListener((obs, oldState, newState) -> {
                         if (newState == javafx.concurrent.Worker.State.SUCCEEDED || 
@@ -207,9 +218,6 @@ public class ProjectViewController {
                 } else if (service instanceof ThumbnailService) {
                     statusThumbLabel.textProperty().bind(service.messageProperty());
                     statusThumbProgress.progressProperty().bind(service.progressProperty());
-                    
-                    // The service's messageProperty will handle the "in progress" status
-                    // updateStatusBubble(statusThumbLabel, i18n.get("project.activity.status.in_progress"), "active");
                     
                     ((ThumbnailService) service).stateProperty().addListener((obs, oldState, newState) -> {
                         if (newState == javafx.concurrent.Worker.State.SUCCEEDED || 
@@ -254,6 +262,11 @@ public class ProjectViewController {
 
     @FXML
     public void initialize() {
+        // Initialize Helper Controller
+        if (assetDetailsController != null) {
+            assetDetailsController.setToastContainer(toastContainer);
+        }
+
         // Initialize Grid ListView
         gridListView = new ListView<>();
         gridListView.getStyleClass().add("image-grid-list");
@@ -263,15 +276,12 @@ public class ProjectViewController {
         // Remove default list style
         gridListView.setStyle("-fx-background-color: #F4F6F8;");
         
-        // Initialize Folder ScrollPane
-        folderScrollPane = new ScrollPane();
-        folderScrollPane.setFitToWidth(true);
-        folderScrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        folderScrollPane.getStyleClass().add("modern-scroll-pane");
-        folderContainer = new VBox(10);
-        folderContainer.setPadding(new Insets(10));
-        folderContainer.setStyle("-fx-background-color: #F4F6F8;");
-        folderScrollPane.setContent(folderContainer);
+        // Initialize Folder TreeView (Virtualized replacement for ScrollPane/VBox)
+        folderTreeView = new TreeView<>();
+        folderTreeView.setShowRoot(false);
+        folderTreeView.getStyleClass().add("modern-scroll-pane");
+        folderTreeView.setCellFactory(tv -> new FolderTreeCell());
+        folderTreeView.setStyle("-fx-background-color: #F4F6F8;");
 
         updateUIWithI18n();
         setupCombos();
@@ -283,7 +293,8 @@ public class ProjectViewController {
             if (viewModeCombo.getSelectionModel().getSelectedIndex() == 0) { // Grid mode
                 repartitionGrid();
             } else {
-                refreshView(); // Full refresh for folder view
+                // For folder view, we might want to refresh if we show thumbnails in tree
+                // But currently tree view is mostly text/structure
             }
         });
         
@@ -327,7 +338,6 @@ public class ProjectViewController {
         double leftPadding = Math.max(10, totalPadding / 2);
         
         // Apply padding to the ListView to center the content
-        // We use left padding to push content to center. 
         gridListView.setPadding(new Insets(10, 0, 10, leftPadding));
         
         List<List<Asset>> rows = new ArrayList<>();
@@ -396,7 +406,6 @@ public class ProjectViewController {
                         loadImageAsync(view, asset);
                     } else {
                         // Same asset, update image if needed (e.g. better quality available)
-                        // Do NOT clear image to avoid flickering
                         loadImageAsync(view, asset);
                     }
                 }
@@ -404,6 +413,38 @@ public class ProjectViewController {
         }
     }
     
+    // --- Folder View Virtualization ---
+    
+    private class FolderTreeCell extends TreeCell<Object> {
+        @Override
+        protected void updateItem(Object item, boolean empty) {
+            super.updateItem(item, empty);
+            
+            if (empty || item == null) {
+                setText(null);
+                setGraphic(null);
+            } else {
+                if (item instanceof FolderNode) {
+                    FolderNode node = (FolderNode) item;
+                    setText(node.name + " (" + node.totalAssets + ")");
+                    // Could add folder icon here
+                } else if (item instanceof Asset) {
+                    Asset asset = (Asset) item;
+                    setText(new File(asset.getPath()).getName());
+                    // Could add mini thumbnail here
+                    setGraphic(null); // Or a small icon
+                    
+                    // Handle selection
+                    setOnMouseClicked(e -> {
+                        if (assetDetailsController != null) {
+                            assetDetailsController.showAssetDetails(asset);
+                        }
+                    });
+                }
+            }
+        }
+    }
+
     private void loadImageAsync(ImageView view, Asset asset) {
         loadImageAsync(view, asset.getPath());
     }
@@ -429,7 +470,7 @@ public class ProjectViewController {
         card.getStyleClass().add("project-card");
         
         StackPane thumbContainer = new StackPane();
-        thumbContainer.setStyle("-fx-background-color: #eee;");
+        thumbContainer.getStyleClass().add("thumbnail-container");
         
         ImageView thumbView = new ImageView();
         thumbView.setPreserveRatio(true);
@@ -469,7 +510,7 @@ public class ProjectViewController {
         
         if (isVideo && !hasLabel) {
             Label typeLabel = new Label("VIDEO");
-            typeLabel.setStyle("-fx-background-color: rgba(0,0,0,0.5); -fx-text-fill: white; -fx-padding: 2;");
+            typeLabel.getStyleClass().add("video-label");
             StackPane.setAlignment(typeLabel, Pos.BOTTOM_RIGHT);
             thumbContainer.getChildren().add(typeLabel);
         } else if (!isVideo && hasLabel) {
@@ -478,11 +519,15 @@ public class ProjectViewController {
         
         Label nameLabel = (Label) card.getChildren().get(1);
         nameLabel.setText(new File(asset.getPath()).getName());
-        nameLabel.setStyle("-fx-font-size: 10px;");
+        nameLabel.getStyleClass().add("asset-name");
         nameLabel.setMaxWidth(size);
         nameLabel.setTextOverrun(OverrunStyle.ELLIPSIS);
         
-        card.setOnMouseClicked(e -> selectAsset(asset));
+        card.setOnMouseClicked(e -> {
+            if (assetDetailsController != null) {
+                assetDetailsController.showAssetDetails(asset);
+            }
+        });
     }
     
     private ImageView findImageView(VBox card) {
@@ -524,16 +569,6 @@ public class ProjectViewController {
         peoplePane.setText(i18n.get("project.sidebar.people"));
         manualTagsPane.setText(i18n.get("project.sidebar.tags_manual"));
         
-        // Details section
-        if (detailsTitleLabel != null) detailsTitleLabel.setText(i18n.get("project.sidebar.details"));
-        openButton.setText(i18n.get("project.sidebar.btn_open"));
-        deleteButton.setText(i18n.get("project.sidebar.btn_delete"));
-        if (pathLabel != null) pathLabel.setText(i18n.get("project.sidebar.path_label"));
-        if (tagsLabel != null) tagsLabel.setText(i18n.get("project.sidebar.tags_label"));
-
-        noSelectionLabel.setText(i18n.get("project.sidebar.no_selection"));
-        summaryLabel.setText(i18n.get("project.sidebar.summary_label"));
-
         // Activity Monitor
         activityTitleLabel.setText(i18n.get("project.activity.title"));
         activityIndexingLabel.setText(i18n.get("project.activity.indexing"));
@@ -547,6 +582,10 @@ public class ProjectViewController {
         statusScanLabel.setText(i18n.get("project.activity.status.inactive"));
         statusThumbLabel.setText(i18n.get("project.activity.status.inactive"));
         statusAiLabel.setText(i18n.get("project.activity.status.pending"));
+        
+        if (assetDetailsController != null) {
+            assetDetailsController.updateUIWithI18n();
+        }
     }
 
     private void setupCombos() {
@@ -658,13 +697,20 @@ public class ProjectViewController {
     @FXML
     private void onBackClicked() {
         try {
+            shutdown(); // Clean up resources
             FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/myriadimg/ui/dashboard.fxml"));
             Parent root = loader.load();
             Stage stage = (Stage) rootStackPane.getScene().getWindow();
             stage.getScene().setRoot(root);
         } catch (IOException e) {
-            e.printStackTrace();
+            ProjectLogger.logError(null, "ProjectViewController", "Failed to return to dashboard", e);
             ToastUtil.show(toastContainer, i18n.get("dashboard.toast.title_error"), "Failed to return to dashboard", true);
+        }
+    }
+    
+    public void shutdown() {
+        if (imageLoadExecutor != null && !imageLoadExecutor.isShutdown()) {
+            imageLoadExecutor.shutdownNow();
         }
     }
 
@@ -689,8 +735,6 @@ public class ProjectViewController {
             statusScanProgress.progressProperty().unbind();
         }
 
-        // Update Monitor UI initial state - this will be handled by the service's messageProperty binding
-        // updateStatusBubble(statusScanLabel, i18n.get("project.activity.status.in_progress"), "active");
         statusScanProgress.setProgress(-1); // Indeterminate progress
 
         IndexingService scanTask = new IndexingService(Paths.get(currentProject.getPath()), dbManager);
@@ -731,7 +775,7 @@ public class ProjectViewController {
 
             Throwable ex = scanTask.getException();
             if (ex != null) {
-                ex.printStackTrace();
+                ProjectLogger.logError(Paths.get(currentProject.getPath()), "IndexingService", "Scan failed", ex);
                 ToastUtil.show(toastContainer, i18n.get("dashboard.toast.title_error"), "Scan failed: " + ex.getMessage(), true);
             }
         });
@@ -785,43 +829,7 @@ public class ProjectViewController {
 
     @FXML
     private void onStartAiAnalysis() {
-        ToastUtil.show(toastContainer, "IA", "L'analyse IA n'est pas encore implémentée.", false);
-    }
-
-    @FXML
-    private void onOpenClicked() {
-        if (selectedAsset == null || currentProject == null) return;
-
-        File file = new File(currentProject.getPath(), selectedAsset.getPath());
-        if (file.exists()) {
-            try {
-                Desktop.getDesktop().open(file);
-            } catch (IOException e) {
-                ToastUtil.show(toastContainer, i18n.get("dashboard.toast.title_error"), "Could not open file: " + e.getMessage(), true);
-            }
-        } else {
-            ToastUtil.show(toastContainer, i18n.get("dashboard.toast.title_error"), "File not found on disk", true);
-        }
-    }
-
-    @FXML
-    private void onDeleteClicked() {
-        // TODO: Implement delete logic
-        ToastUtil.show(toastContainer, "Info", "Delete not implemented yet", false);
-    }
-
-    @FXML
-    private void onPathClicked() {
-        if (selectedAsset == null || currentProject == null) return;
-        
-        File file = new File(currentProject.getPath(), selectedAsset.getPath());
-        String absolutePath = file.getAbsolutePath();
-        
-        ClipboardContent content = new ClipboardContent();
-        content.putString(absolutePath);
-        Clipboard.getSystemClipboard().setContent(content);
-        
-        ToastUtil.show(toastContainer, i18n.get("dashboard.toast.title_success"), i18n.get("dashboard.toast.path_copied"), false);
+        ToastUtil.show(toastContainer, "AI", "AI analysis is not yet implemented.", false);
     }
 
     private void startThumbnailGeneration() {
@@ -835,8 +843,6 @@ public class ProjectViewController {
             statusThumbProgress.progressProperty().unbind();
         }
 
-        // Update Monitor UI initial state - this will be handled by the service's messageProperty binding
-        // updateStatusBubble(statusThumbLabel, i18n.get("project.activity.status.in_progress"), "active");
         statusThumbProgress.setProgress(-1); // Indeterminate progress
 
         thumbnailService.reset(); // Reset the service state
@@ -863,6 +869,11 @@ public class ProjectViewController {
             // Update Monitor UI final state
             updateStatusBubble(statusThumbLabel, i18n.get("project.activity.status.error"), "error");
             statusThumbProgress.setProgress(0);
+            
+            Throwable ex = thumbnailService.getException();
+            if (ex != null) {
+                ProjectLogger.logError(Paths.get(currentProject.getPath()), "ThumbnailService", "Thumbnail generation failed", ex);
+            }
         });
         
         thumbnailService.setOnCancelled(e -> {
@@ -888,7 +899,10 @@ public class ProjectViewController {
         // Load counts
         int imageCount = dbManager.getAssetCount(Asset.AssetType.IMAGE);
         int videoCount = dbManager.getAssetCount(Asset.AssetType.VIDEO);
-        updateSummary(imageCount, videoCount);
+        
+        if (assetDetailsController != null) {
+            assetDetailsController.updateSummary(imageCount, videoCount);
+        }
 
         // Load assets for grid
         this.allAssets = dbManager.getAllAssets();
@@ -914,180 +928,64 @@ public class ProjectViewController {
         viewContainer.getChildren().clear();
         viewContainer.getChildren().add(gridListView);
         Platform.runLater(this::repartitionGrid);
-
     }
 
     private void renderFolderView() {
         viewContainer.getChildren().clear();
-        viewContainer.getChildren().add(folderScrollPane);
-        
-        folderContainer.getChildren().clear();
+        viewContainer.getChildren().add(folderTreeView);
         
         // Build the tree
-        FolderNode root = new FolderNode("Root");
+        TreeItem<Object> rootItem = new TreeItem<>(new FolderNode("Root"));
+        rootItem.setExpanded(true);
+        
+        // Map to keep track of created folder items
+        Map<String, TreeItem<Object>> folderItems = new HashMap<>();
+        
         for (Asset asset : allAssets) {
             Path p = Paths.get(asset.getPath());
             Path parent = p.getParent();
-            FolderNode current = root;
+            
+            TreeItem<Object> currentItem = rootItem;
+            String currentPath = "";
             
             if (parent != null) {
                 for (Path part : parent) {
                     String partName = part.toString();
-                    current = current.subFolders.computeIfAbsent(partName, FolderNode::new);
-                }
-            }
-            current.assets.add(asset);
-        }
-
-        renderFolderContent(root, folderContainer);
-    }
-
-    private void renderFolderContent(FolderNode node, VBox container) {
-        // 1. Subfolders
-        for (FolderNode sub : node.subFolders.values()) {
-            TitledPane tp = new TitledPane();
-            int count = countAssets(sub);
-            tp.setText(sub.name + " (" + count + ")");
-            tp.setAnimated(true);
-            tp.setExpanded(false);
-            
-            VBox content = new VBox(10);
-            content.setPadding(new Insets(0, 0, 0, 20));
-            
-            tp.expandedProperty().addListener((obs, wasExpanded, isExpanded) -> {
-                if (isExpanded && content.getChildren().isEmpty()) {
-                     renderFolderContent(sub, content);
-                }
-            });
-            
-            tp.setContent(content);
-            container.getChildren().add(tp);
-        }
-
-        // 2. Assets
-        if (!node.assets.isEmpty()) {
-            FlowPane grid = new FlowPane();
-            grid.setHgap(10);
-            grid.setVgap(10);
-            grid.setPadding(new Insets(10));
-            grid.setStyle("-fx-background-color: transparent;");
-            
-            for (Asset asset : node.assets) {
-                VBox card = createEmptyCard();
-                populateAssetCard(card, asset);
-                grid.getChildren().add(card);
-                
-                ImageView view = findImageView(card);
-                if (view != null) loadImageAsync(view, asset);
-            }
-            container.getChildren().add(grid);
-        }
-    }
-
-    private int countAssets(FolderNode node) {
-        int count = node.assets.size();
-        for (FolderNode sub : node.subFolders.values()) {
-            count += countAssets(sub);
-        }
-        return count;
-    }
-
-    private void selectAsset(Asset asset) {
-        this.selectedAsset = asset;
-        noSelectionLabel.setVisible(false);
-        noSelectionLabel.setManaged(false);
-        selectionDetailsBox.setVisible(true);
-        selectionDetailsBox.setManaged(true);
-
-        selectedImageName.setText(new File(asset.getPath()).getName());
-        selectedImageDate.setText(asset.getCreationDate() != null ? asset.getCreationDate().toString() : "Unknown date");
-        
-        // Update path label
-        File file = new File(currentProject.getPath(), asset.getPath());
-        selectedImagePath.setText(file.getAbsolutePath());
-
-        // Load real image for preview
-        try {
-            if (file.exists()) {
-                String lower = asset.getPath().toLowerCase();
-                boolean isHeic = lower.endsWith(".heic") || lower.endsWith(".heif");
-
-                if (asset.getType() == Asset.AssetType.IMAGE && !isHeic) {
-                    Image image = new Image(file.toURI().toString(), 220, 200, true, true);
-                    selectedImageView.setImage(image);
-                } else {
-                    // For HEIC or VIDEO, use the thumbnail
-                    if (thumbnailService != null) {
-                        CompletableFuture.supplyAsync(() -> thumbnailService.loadThumbnail(asset.getPath()))
-                                .thenAccept(image -> Platform.runLater(() -> selectedImageView.setImage(image)));
+                    currentPath = currentPath.isEmpty() ? partName : currentPath + File.separator + partName;
+                    
+                    if (!folderItems.containsKey(currentPath)) {
+                        FolderNode node = new FolderNode(partName);
+                        TreeItem<Object> newItem = new TreeItem<>(node);
+                        folderItems.put(currentPath, newItem);
+                        currentItem.getChildren().add(newItem);
+                        currentItem = newItem;
+                    } else {
+                        currentItem = folderItems.get(currentPath);
                     }
+                    
+                    // Update count
+                    ((FolderNode)currentItem.getValue()).totalAssets++;
                 }
-                
-                // Show warning for HEIC files
-                if (isHeic) {
-                    showHeicWarning();
-                } else {
-                    hideHeicWarning();
-                }
-            } else {
-                selectedImageView.setImage(null);
             }
-        } catch (Exception e) {
-            selectedImageView.setImage(null);
+            
+            // Add asset as leaf
+            currentItem.getChildren().add(new TreeItem<>(asset));
         }
-
-        selectedImageTags.getChildren().clear();
-        // TODO: Load tags from DB for this asset
+        
+        folderTreeView.setRoot(rootItem);
     }
     
-    private void showHeicWarning() {
-        // Check if warning already exists
-        if (selectionDetailsBox.getChildren().stream().anyMatch(n -> n.getId() != null && n.getId().equals("heicWarningBox"))) {
-            return;
-        }
-        
-        VBox warningBox = new VBox(5);
-        warningBox.setId("heicWarningBox");
-        warningBox.setStyle("-fx-background-color: #FFF3CD; -fx-border-color: #FFEEBA; -fx-border-radius: 4; -fx-background-radius: 4; -fx-padding: 10;");
-        warningBox.setPadding(new Insets(10));
-        
-        Label title = new Label("⚠ " + i18n.get("project.sidebar.warning_heic_title"));
-        title.setStyle("-fx-font-weight: bold; -fx-text-fill: #856404;");
-        
-        Label desc = new Label(i18n.get("project.sidebar.warning_heic_desc"));
-        desc.setStyle("-fx-text-fill: #856404; -fx-font-size: 11px;");
-        desc.setWrapText(true);
-        
-        warningBox.getChildren().addAll(title, desc);
-        
-        // Add after image view (index 1 usually, but safer to find index)
-        int index = selectionDetailsBox.getChildren().indexOf(selectedImageView);
-        if (index != -1 && index + 1 < selectionDetailsBox.getChildren().size()) {
-            selectionDetailsBox.getChildren().add(index + 1, warningBox);
-        } else {
-            selectionDetailsBox.getChildren().add(warningBox);
-        }
-    }
-    
-    private void hideHeicWarning() {
-        selectionDetailsBox.getChildren().removeIf(n -> n.getId() != null && n.getId().equals("heicWarningBox"));
-    }
-
-    private void updateSummary(int images, int videos) {
-        summaryValue.setText(i18n.get("project.sidebar.summary_value", images, videos));
-    }
-    @FXML
-    private void onShowLogs() {
-        ToastUtil.show(toastContainer, "Logs", "Not implemented yet", false);
-    }
-
     private static class FolderNode {
         String name;
-        Map<String, FolderNode> subFolders = new TreeMap<>();
-        List<Asset> assets = new ArrayList<>();
+        int totalAssets = 0;
         
         FolderNode(String name) {
             this.name = name;
+        }
+        
+        @Override
+        public String toString() {
+            return name;
         }
     }
 }

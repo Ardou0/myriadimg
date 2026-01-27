@@ -14,12 +14,12 @@ import javafx.util.Duration;
 public class ToastUtil {
 
     /**
-     * Affiche une notification Toast dans le conteneur spécifié.
+     * Displays a Toast notification in the specified container.
      *
-     * @param parentContainer Le conteneur (VBox, StackPane, etc.) où ajouter le toast.
-     * @param title           Le titre du toast.
-     * @param details         Le message détaillé.
-     * @param isError         Si true, applique le style d'erreur (rouge).
+     * @param parentContainer The container (VBox, StackPane, etc.) where the toast will be added.
+     * @param title           The title of the toast.
+     * @param details         The detailed message.
+     * @param isError         If true, applies the error style (red).
      */
     public static void show(Pane parentContainer, String title, String details, boolean isError) {
         // Title (Always visible)

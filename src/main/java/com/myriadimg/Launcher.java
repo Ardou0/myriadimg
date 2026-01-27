@@ -11,6 +11,10 @@ import javafx.stage.Stage;
 
 import java.io.IOException;
 
+/**
+ * Main JavaFX Application class.
+ * Initializes the global database, sets up the primary stage, and handles application lifecycle events.
+ */
 public class Launcher extends Application {
 
     @Override

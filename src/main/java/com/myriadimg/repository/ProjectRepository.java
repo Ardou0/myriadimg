@@ -7,8 +7,16 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Repository for accessing and manipulating Project entities in the global database.
+ * Handles CRUD operations for projects.
+ */
 public class ProjectRepository {
 
+    /**
+     * Saves a project to the database.
+     * If a project with the same path already exists, it updates the existing record.
+     */
     public void save(Project project) {
         String sql = "INSERT INTO projects(name, path, last_opened, display_order) VALUES(?,?,?,?) " +
                      "ON CONFLICT(path) DO UPDATE SET last_opened = excluded.last_opened, name = excluded.name";
@@ -61,6 +69,10 @@ public class ProjectRepository {
         }
     }
 
+    /**
+     * Updates the display order of a list of projects.
+     * Uses a batch update for efficiency.
+     */
     public void updateOrder(List<Project> projects) {
         String sql = "UPDATE projects SET display_order = ? WHERE id = ?";
         Connection conn = DatabaseManager.connect();

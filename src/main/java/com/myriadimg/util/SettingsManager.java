@@ -10,6 +10,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Manages application settings and preferences.
+ * Handles both global settings (stored in user home) and project-specific settings.
+ * Uses Jackson for JSON serialization/deserialization.
+ */
 public class SettingsManager {
 
     private static final String APP_DIR = ".MyriadImgGlobal";

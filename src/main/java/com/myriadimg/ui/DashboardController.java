@@ -3,7 +3,7 @@ package com.myriadimg.ui;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.myriadimg.model.Project;
 import com.myriadimg.repository.ProjectRepository;
-import com.myriadimg.util.I18nService;
+import com.myriadimg.service.I18nService;
 import com.myriadimg.util.SettingsManager;
 import com.myriadimg.util.ToastUtil;
 import javafx.animation.FadeTransition;

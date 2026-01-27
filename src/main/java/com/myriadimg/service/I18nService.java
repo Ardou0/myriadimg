@@ -1,7 +1,8 @@
-package com.myriadimg.util;
+package com.myriadimg.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.myriadimg.util.SettingsManager;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -9,6 +10,11 @@ import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Service responsible for Internationalization (I18n).
+ * Loads language files (JSON) and provides localized strings.
+ * Implements the Singleton pattern.
+ */
 public class I18nService {
 
     private static I18nService instance;
@@ -29,6 +35,13 @@ public class I18nService {
         return instance;
     }
 
+    /**
+     * Loads the specified language file from resources.
+     * If the file is not found, it attempts to fallback to 'fr'.
+     * Notifies all listeners after a successful language change.
+     *
+     * @param lang The language code (e.g., "en", "fr").
+     */
     public void loadLanguage(String lang) {
         try (InputStream is = getClass().getResourceAsStream("/i18n/" + lang + ".json")) {
             if (is == null) {
@@ -60,6 +73,13 @@ public class I18nService {
         return currentLang;
     }
 
+    /**
+     * Retrieves a localized string by its key.
+     * Supports nested keys using dot notation (e.g., "menu.file.open").
+     *
+     * @param key The key of the string resource.
+     * @return The localized string, or "!key!" if not found.
+     */
     public String get(String key) {
         if (rootNode == null) return "!" + key + "!";
         
@@ -77,6 +97,14 @@ public class I18nService {
         return node.asText();
     }
 
+    /**
+     * Retrieves a localized string and formats it with arguments.
+     * Uses MessageFormat for formatting.
+     *
+     * @param key The key of the string resource.
+     * @param args Arguments to replace placeholders in the string.
+     * @return The formatted localized string.
+     */
     public String get(String key, Object... args) {
         String pattern = get(key);
         return MessageFormat.format(pattern, args);

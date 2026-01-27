@@ -1,7 +1,7 @@
 package com.myriadimg.ui;
 
 import com.myriadimg.service.ServiceManager;
-import com.myriadimg.util.I18nService;
+import com.myriadimg.service.I18nService;
 import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
 import javafx.geometry.Rectangle2D;
@@ -24,7 +24,8 @@ import java.util.ResourceBundle;
 
 /**
  * Manages the application's system tray icon and a custom JavaFX popup menu.
- * This provides a modern, styled interface for background tasks.
+ * This provides a modern, styled interface for background tasks and quick actions.
+ * It bridges AWT (SystemTray) and JavaFX (Popup Stage).
  */
 public class TrayManager {
 
@@ -48,6 +49,8 @@ public class TrayManager {
 
     /**
      * Initializes the system tray icon.
+     * Sets up the AWT tray icon and the JavaFX popup stage.
+     *
      * @param stage The primary JavaFX stage of the application.
      */
     public void init(Stage stage) {
@@ -92,6 +95,10 @@ public class TrayManager {
         });
     }
 
+    /**
+     * Loads the FXML for the custom tray popup and configures the stage.
+     * The stage is transparent to allow for custom styling (rounded corners).
+     */
     private void initPopupStage() {
         try {
             // Create a ResourceBundle adapter for the JSON-based I18nService
@@ -135,6 +142,13 @@ public class TrayManager {
         }
     }
 
+    /**
+     * Toggles the visibility of the custom tray popup.
+     * Calculates the optimal position based on mouse coordinates and screen bounds.
+     *
+     * @param mouseX The X coordinate of the mouse click.
+     * @param mouseY The Y coordinate of the mouse click.
+     */
     private void toggleTrayPopup(double mouseX, double mouseY) {
         if (trayPopupStage == null) return;
 

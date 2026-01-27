@@ -835,3 +835,40 @@
     -fx-alignment: center;
     -fx-padding: 20px;
 }
+
+/* --- Asset Card Styles --- */
+.thumbnail-container {
+    -fx-background-color: #eee;
+    -fx-alignment: center;
+}
+
+.video-label {
+    -fx-background-color: rgba(0,0,0,0.5);
+    -fx-text-fill: white;
+    -fx-padding: 2;
+    -fx-font-size: 10px;
+}
+
+.asset-name {
+    -fx-font-size: 10px;
+    -fx-text-fill: #333;
+}
+
+/* --- Warning Box --- */
+.warning-box {
+    -fx-background-color: #FFF3CD;
+    -fx-border-color: #FFEEBA;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+    -fx-padding: 10;
+}
+
+.warning-title {
+    -fx-font-weight: bold;
+    -fx-text-fill: #856404;
+}
+
+.warning-desc {
+    -fx-text-fill: #856404;
+    -fx-font-size: 11px;
+}

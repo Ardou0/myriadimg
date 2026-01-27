@@ -6,6 +6,11 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 
+/**
+ * Manages the global application database (myriadimg_global.db).
+ * This database stores the list of projects and global settings, but not the assets themselves.
+ * It resides in the user's home directory under .MyriadImgGlobal.
+ */
 public class DatabaseManager {
     private static final String DB_NAME = "myriadimg_global.db";
     private static final String APP_DIR = ".MyriadImgGlobal";
@@ -18,6 +23,12 @@ public class DatabaseManager {
         }
     }
 
+    /**
+     * Establishes a connection to the global SQLite database.
+     * Creates the application directory if it doesn't exist.
+     *
+     * @return A Connection object or null if connection failed.
+     */
     public static Connection connect() {
         String userHome = System.getProperty("user.home");
         File appDir = new File(userHome, APP_DIR);
@@ -39,6 +50,10 @@ public class DatabaseManager {
         return conn;
     }
 
+    /**
+     * Initializes the global database schema.
+     * Creates the 'projects' table if it doesn't exist and handles basic migrations.
+     */
     public static void initialize() {
         String userHome = System.getProperty("user.home");
         File appDir = new File(userHome, APP_DIR);

@@ -28,6 +28,17 @@
       "path_copied": "Path copied to clipboard"
     }
   },
+  "new_project": {
+    "title": "New Project",
+    "label_name": "Project Name",
+    "placeholder_name": "Ex: Holidays 2023",
+    "label_path": "Source Folder",
+    "placeholder_path": "Select a folder...",
+    "btn_cancel": "Cancel",
+    "btn_create": "Create Project",
+    "error_empty": "Please fill in all fields.",
+    "error_create": "Unable to create project."
+  },
   "project": {
     "btn_back": "Dashboard",
     "btn_scan": "Scan",

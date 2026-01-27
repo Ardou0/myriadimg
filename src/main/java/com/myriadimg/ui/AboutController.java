@@ -1,7 +1,7 @@
 package com.myriadimg.ui;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.myriadimg.util.I18nService;
+import com.myriadimg.service.I18nService;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
@@ -14,6 +14,11 @@ import javafx.stage.Stage;
 
 import java.io.IOException;
 
+/**
+ * Controller for the "About" view.
+ * Displays application information, philosophy, technologies used, and credits.
+ * Content is dynamically loaded from the I18n service.
+ */
 public class AboutController {
 
     @FXML private Label appNameLabel;
@@ -60,6 +65,10 @@ public class AboutController {
         }
     }
 
+    /**
+     * Populates the UI with information from the I18n service.
+     * Iterates over JSON arrays for lists like philosophy points, technologies, etc.
+     */
     private void loadAppInfo() {
         // Load data from I18n service instead of separate file
         appNameLabel.setText(i18n.get("app.name"));

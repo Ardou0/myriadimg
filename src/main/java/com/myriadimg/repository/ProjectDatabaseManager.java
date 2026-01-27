@@ -8,25 +8,65 @@ import java.io.File;
 import java.io.InputStream;
 import java.sql.*;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
+/**
+ * Manages the project-specific database (index.sqlite).
+ * This database is located inside the .MyriadImg folder within each project root.
+ * It stores metadata about assets, tags, and analysis results for that specific project.
+ */
 public class ProjectDatabaseManager {
     private static final String DB_FOLDER = ".MyriadImg";
     private static final String DB_NAME = "index.sqlite";
-    private static final int CURRENT_DB_VERSION = 1;
+    private static final int CURRENT_DB_VERSION = 2; // Incremented version
 
-    private final String projectRootPath;
+    private static final String SQL_CREATE_METADATA = """
+            CREATE TABLE IF NOT EXISTS metadata (
+            version integer PRIMARY KEY,
+            scan_required integer DEFAULT 0,
+            thumbnail_scan_required integer DEFAULT 0,
+            tag_scan_required integer DEFAULT 0
+            );""";
+
+    private static final String SQL_CREATE_ASSETS = """
+            CREATE TABLE IF NOT EXISTS assets (
+             path text PRIMARY KEY,
+             hash text,
+             size integer,
+             creation_date text,
+             type text,
+             thumbnail_blob blob
+            );""";
+
+    private static final String SQL_CREATE_TAGS = """
+            CREATE TABLE IF NOT EXISTS tags (
+             id integer PRIMARY KEY AUTOINCREMENT,
+             value text NOT NULL UNIQUE,
+             pseudo text,
+             type text
+            );""";
+
+    private static final String SQL_CREATE_ASSET_TAGS = """
+            CREATE TABLE IF NOT EXISTS asset_tags (
+             asset_path text NOT NULL,
+             tag_id integer NOT NULL,
+             confidence real DEFAULT 1.0,
+             PRIMARY KEY (asset_path, tag_id),
+             FOREIGN KEY (asset_path) REFERENCES assets(path) ON DELETE CASCADE,
+             FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+            );""";
+
+    private static final String SQL_INDEX_ASSETS_HASH = "CREATE INDEX IF NOT EXISTS idx_assets_hash ON assets(hash);";
+    private static final String SQL_INDEX_TAGS_VALUE = "CREATE INDEX IF NOT EXISTS idx_tags_value ON tags(value);";
+    private static final String SQL_INDEX_ASSET_TAGS_TAG_ID = "CREATE INDEX IF NOT EXISTS idx_asset_tags_tag_id ON asset_tags(tag_id);";
+
     private final String connectionUrl;
 
     public ProjectDatabaseManager(String projectRootPath) {
-        this.projectRootPath = projectRootPath;
         File dbFolder = new File(projectRootPath, DB_FOLDER);
         if (!dbFolder.exists()) {
             if (!dbFolder.mkdirs()) {
-                System.err.println("Could not create project database directory: " + dbFolder.getAbsolutePath());
+                throw new DatabaseException("Could not create project database directory: " + dbFolder.getAbsolutePath());
             }
         }
         File dbFile = new File(dbFolder, DB_NAME);
@@ -38,8 +78,18 @@ public class ProjectDatabaseManager {
         return DriverManager.getConnection(connectionUrl);
     }
 
+    /**
+     * Initializes the project database schema and handles migrations.
+     * Uses transactions to ensure schema integrity.
+     */
     private void initialize() {
         try (Connection conn = connect()) {
+            // Enable WAL mode for better concurrency and performance
+            try (Statement stmt = conn.createStatement()) {
+                stmt.execute("PRAGMA journal_mode=WAL;");
+                stmt.execute("PRAGMA synchronous=NORMAL;");
+            }
+
             conn.setAutoCommit(false);
             try (Statement stmt = conn.createStatement()) {
                 // 1. Enable Foreign Keys
@@ -48,7 +98,7 @@ public class ProjectDatabaseManager {
                 // 2. Check Version
                 int version = 0;
                 try {
-                    ResultSet rs = stmt.executeQuery("SELECT version FROM metadata LIMIT 1");
+                    ResultSet rs = stmt.executeQuery("SELECT version FROM metadata ORDER BY version DESC LIMIT 1");
                     if (rs.next()) {
                         version = rs.getInt("version");
                     }
@@ -67,50 +117,186 @@ public class ProjectDatabaseManager {
                 throw e;
             }
         } catch (SQLException e) {
-            System.err.println("Project database initialization failed: " + e.getMessage());
-            e.printStackTrace();
+            throw new DatabaseException("Project database initialization failed", e);
         }
     }
 
     private void migrate(Connection conn, int currentVersion) throws SQLException {
+        System.out.println("Migrating database from version " + currentVersion + " to " + CURRENT_DB_VERSION);
+        
+        // Define expected schema for the current version
+        Map<String, Map<String, String>> expectedSchema = new HashMap<>();
+        
+        // Metadata table
+        Map<String, String> metadataCols = new HashMap<>();
+        metadataCols.put("version", "integer PRIMARY KEY");
+        metadataCols.put("scan_required", "integer DEFAULT 0");
+        metadataCols.put("thumbnail_scan_required", "integer DEFAULT 0");
+        metadataCols.put("tag_scan_required", "integer DEFAULT 0");
+        expectedSchema.put("metadata", metadataCols);
+        
+        // Assets table
+        Map<String, String> assetsCols = new HashMap<>();
+        assetsCols.put("path", "text PRIMARY KEY");
+        assetsCols.put("hash", "text");
+        assetsCols.put("size", "integer");
+        assetsCols.put("creation_date", "text");
+        assetsCols.put("type", "text");
+        assetsCols.put("thumbnail_blob", "blob");
+        expectedSchema.put("assets", assetsCols);
+        
+        // Tags table
+        Map<String, String> tagsCols = new HashMap<>();
+        tagsCols.put("id", "integer PRIMARY KEY AUTOINCREMENT");
+        tagsCols.put("value", "text NOT NULL UNIQUE");
+        tagsCols.put("pseudo", "text");
+        tagsCols.put("type", "text");
+        expectedSchema.put("tags", tagsCols);
+        
+        // Asset_tags table
+        Map<String, String> assetTagsCols = new HashMap<>();
+        assetTagsCols.put("asset_path", "text NOT NULL");
+        assetTagsCols.put("tag_id", "integer NOT NULL");
+        assetTagsCols.put("confidence", "real DEFAULT 1.0");
+        expectedSchema.put("asset_tags", assetTagsCols);
+
         Statement stmt = conn.createStatement();
 
-        if (currentVersion < 1) {
-            // Initial Schema
-            stmt.execute("CREATE TABLE IF NOT EXISTS metadata (version integer PRIMARY KEY);");
-            stmt.execute("INSERT OR REPLACE INTO metadata (version) VALUES (" + CURRENT_DB_VERSION + ");");
+        // 1. Create tables if they don't exist
+        createTablesIfNotExist(stmt);
 
-            stmt.execute("CREATE TABLE IF NOT EXISTS assets (\n"
-                    + " path text PRIMARY KEY,\n"
-                    + " hash text,\n"
-                    + " size integer,\n"
-                    + " creation_date text,\n"
-                    + " type text,\n"
-                    + " thumbnail_blob blob\n"
-                    + ");");
+        // 2. Check and update columns for each table
+        boolean schemaChanged = false;
+        boolean thumbnailSchemaChanged = false;
+        boolean tagSchemaChanged = false;
 
-            stmt.execute("CREATE TABLE IF NOT EXISTS tags (\n"
-                    + " id integer PRIMARY KEY AUTOINCREMENT,\n"
-                    + " value text NOT NULL UNIQUE,\n"
-                    + " pseudo text,\n"
-                    + " type text\n"
-                    + ");");
+        for (Map.Entry<String, Map<String, String>> entry : expectedSchema.entrySet()) {
+            String tableName = entry.getKey();
+            Map<String, String> expectedColumns = entry.getValue();
+            
+            Set<String> existingColumns = getExistingColumns(conn, tableName);
+            
+            for (Map.Entry<String, String> colEntry : expectedColumns.entrySet()) {
+                String colName = colEntry.getKey();
+                String colDef = colEntry.getValue();
+                
+                if (!existingColumns.contains(colName)) {
+                    System.out.println("Adding missing column " + colName + " to table " + tableName);
+                    addColumn(stmt, tableName, colName, colDef);
+                    
+                    // Determine which flag to raise based on the column added
+                    if (tableName.equals("assets") && colName.equals("thumbnail_blob")) {
+                        thumbnailSchemaChanged = true;
+                    } else if (tableName.equals("tags") || tableName.equals("asset_tags")) {
+                        tagSchemaChanged = true;
+                    } else {
+                        schemaChanged = true;
+                    }
+                }
+            }
+        }
 
-            stmt.execute("CREATE TABLE IF NOT EXISTS asset_tags (\n"
-                    + " asset_path text NOT NULL,\n"
-                    + " tag_id integer NOT NULL,\n"
-                    + " confidence real DEFAULT 1.0,\n"
-                    + " PRIMARY KEY (asset_path, tag_id),\n"
-                    + " FOREIGN KEY (asset_path) REFERENCES assets(path) ON DELETE CASCADE,\n"
-                    + " FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE\n"
-                    + ");");
-
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_assets_hash ON assets(hash);");
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_tags_value ON tags(value);");
-            stmt.execute("CREATE INDEX IF NOT EXISTS idx_asset_tags_tag_id ON asset_tags(tag_id);");
+        // 3. Update version
+        stmt.execute("INSERT OR REPLACE INTO metadata (version) VALUES (" + CURRENT_DB_VERSION + ");");
+        
+        // 4. Set scan flags based on what changed
+        if (currentVersion < CURRENT_DB_VERSION) {
+            if (thumbnailSchemaChanged) {
+                stmt.execute("UPDATE metadata SET thumbnail_scan_required = 1 WHERE version = " + CURRENT_DB_VERSION);
+            }
+            if (tagSchemaChanged) {
+                stmt.execute("UPDATE metadata SET tag_scan_required = 1 WHERE version = " + CURRENT_DB_VERSION);
+            }
+            if (schemaChanged) {
+                stmt.execute("UPDATE metadata SET scan_required = 1 WHERE version = " + CURRENT_DB_VERSION);
+            }
         }
     }
 
+    private void createTablesIfNotExist(Statement stmt) throws SQLException {
+        stmt.execute(SQL_CREATE_METADATA);
+        stmt.execute(SQL_CREATE_ASSETS);
+        stmt.execute(SQL_CREATE_TAGS);
+        stmt.execute(SQL_CREATE_ASSET_TAGS);
+
+        stmt.execute(SQL_INDEX_ASSETS_HASH);
+        stmt.execute(SQL_INDEX_TAGS_VALUE);
+        stmt.execute(SQL_INDEX_ASSET_TAGS_TAG_ID);
+    }
+
+    private Set<String> getExistingColumns(Connection conn, String tableName) throws SQLException {
+        Set<String> columns = new HashSet<>();
+        try (ResultSet rs = conn.getMetaData().getColumns(null, null, tableName, null)) {
+            while (rs.next()) {
+                columns.add(rs.getString("COLUMN_NAME"));
+            }
+        }
+        return columns;
+    }
+
+    private void addColumn(Statement stmt, String tableName, String columnName, String columnDefinition) throws SQLException {
+        // Remove PRIMARY KEY or AUTOINCREMENT from definition if adding a column, as SQLite has limitations on ALTER TABLE
+        // Generally adding columns with constraints is tricky in SQLite, but for simple types it works.
+        // We strip PRIMARY KEY / AUTOINCREMENT because you can't add a PK column to an existing table easily.
+        String safeDefinition = columnDefinition.replaceAll("(?i)PRIMARY KEY", "").replaceAll("(?i)AUTOINCREMENT", "").trim();
+        
+        String sql = "ALTER TABLE " + tableName + " ADD COLUMN " + columnName + " " + safeDefinition;
+        stmt.execute(sql);
+    }
+    
+    public boolean isScanRequired() {
+        return checkFlag("scan_required");
+    }
+    
+    public void setScanRequired(boolean required) {
+        setFlag("scan_required", required);
+    }
+    
+    public boolean isThumbnailScanRequired() {
+        return checkFlag("thumbnail_scan_required");
+    }
+    
+    public void setThumbnailScanRequired(boolean required) {
+        setFlag("thumbnail_scan_required", required);
+    }
+    
+    public boolean isTagScanRequired() {
+        return checkFlag("tag_scan_required");
+    }
+    
+    public void setTagScanRequired(boolean required) {
+        setFlag("tag_scan_required", required);
+    }
+
+    private boolean checkFlag(String column) {
+        String sql = "SELECT " + column + " FROM metadata ORDER BY version DESC LIMIT 1";
+        try (Connection conn = connect();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            if (rs.next()) {
+                return rs.getInt(column) == 1;
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to check flag " + column, e);
+        }
+        return false;
+    }
+
+    private void setFlag(String column, boolean value) {
+        String sql = "UPDATE metadata SET " + column + " = ? WHERE version = (SELECT MAX(version) FROM metadata)";
+        try (Connection conn = connect();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setInt(1, value ? 1 : 0);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to set flag " + column, e);
+        }
+    }
+
+    /**
+     * Inserts a list of assets into the database in a single batch transaction.
+     * Uses 'INSERT OR IGNORE' to skip existing assets.
+     */
     public void batchInsertAssets(List<Asset> assets) {
         String sql = "INSERT OR IGNORE INTO assets(path, hash, size, creation_date, type) VALUES(?,?,?,?,?)";
 
@@ -132,14 +318,21 @@ public class ProjectDatabaseManager {
                 throw e;
             }
         } catch (SQLException e) {
-            System.err.println("Batch insert failed: " + e.getMessage());
-            e.printStackTrace();
+            throw new DatabaseException("Batch insert failed", e);
         }
     }
     
     public void cleanupNonMediaAssets() {
-        // Delete assets that are not IMAGE or VIDEO
-        String sql = "DELETE FROM assets WHERE type NOT IN ('IMAGE', 'VIDEO')";
+        // Dynamically build the list of allowed types from the Enum
+        StringBuilder allowedTypes = new StringBuilder();
+        for (Asset.AssetType type : Asset.AssetType.values()) {
+            if (!allowedTypes.isEmpty()) {
+                allowedTypes.append(", ");
+            }
+            allowedTypes.append("'").append(type.name()).append("'");
+        }
+
+        String sql = "DELETE FROM assets WHERE type NOT IN (" + allowedTypes + ")";
         try (Connection conn = connect();
              Statement stmt = conn.createStatement()) {
             int deleted = stmt.executeUpdate(sql);
@@ -147,11 +340,14 @@ public class ProjectDatabaseManager {
                 System.out.println("Cleaned up " + deleted + " non-media assets from database.");
             }
         } catch (SQLException e) {
-            System.err.println("Failed to cleanup non-media assets: " + e.getMessage());
-            e.printStackTrace();
+            throw new DatabaseException("Failed to cleanup non-media assets", e);
         }
     }
 
+    /**
+     * Removes a list of assets from the database by their paths.
+     * Uses batch processing for performance.
+     */
     public void removeAssets(List<String> pathsToRemove) {
         if (pathsToRemove == null || pathsToRemove.isEmpty()) {
             return;
@@ -182,8 +378,7 @@ public class ProjectDatabaseManager {
                 throw e;
             }
         } catch (SQLException e) {
-            System.err.println("Failed to remove assets: " + e.getMessage());
-            e.printStackTrace();
+            throw new DatabaseException("Failed to remove assets", e);
         }
     }
     
@@ -195,11 +390,14 @@ public class ProjectDatabaseManager {
             pstmt.setString(2, path);
             pstmt.executeUpdate();
         } catch (SQLException e) {
-            e.printStackTrace();
+            throw new DatabaseException("Failed to update asset thumbnail for " + path, e);
         }
     }
     
     public InputStream getThumbnailStream(String path) {
+        // Warning: This loads the entire BLOB into memory. For very large images, this could be an issue.
+        // Consider streaming directly from the ResultSet if the JDBC driver supports it efficiently,
+        // or using a separate file-based cache for large thumbnails.
         String sql = "SELECT thumbnail_blob FROM assets WHERE path = ?";
         try (Connection conn = connect();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -213,7 +411,7 @@ public class ProjectDatabaseManager {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            throw new DatabaseException("Failed to get thumbnail stream for " + path, e);
         }
         return null;
     }
@@ -228,7 +426,7 @@ public class ProjectDatabaseManager {
                 paths.add(rs.getString("path"));
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            throw new DatabaseException("Failed to get assets without thumbnail", e);
         }
         return paths;
     }
@@ -239,7 +437,7 @@ public class ProjectDatabaseManager {
              Statement stmt = conn.createStatement()) {
             stmt.executeUpdate(sql);
         } catch (SQLException e) {
-            e.printStackTrace();
+            throw new DatabaseException("Failed to reset thumbnails", e);
         }
     }
     
@@ -253,8 +451,7 @@ public class ProjectDatabaseManager {
                 hashes.add(rs.getString("hash"));
             }
         } catch (SQLException e) {
-            System.err.println("Failed to load hashes: " + e.getMessage());
-            e.printStackTrace();
+            throw new DatabaseException("Failed to load hashes", e);
         }
         return hashes;
     }
@@ -269,14 +466,17 @@ public class ProjectDatabaseManager {
                 paths.add(rs.getString("path"));
             }
         } catch (SQLException e) {
-            System.err.println("Failed to load asset paths: " + e.getMessage());
-            e.printStackTrace();
+            throw new DatabaseException("Failed to load asset paths", e);
         }
         return paths;
     }
 
     // Tag Management Methods
 
+    /**
+     * Retrieves a tag ID by its value, or creates it if it doesn't exist.
+     * This ensures tag uniqueness and reuse.
+     */
     public int getOrCreateTag(String value, String pseudo, Tag.TagType type) {
         String selectSql = "SELECT id FROM tags WHERE value = ?";
         String insertSql = "INSERT INTO tags(value, pseudo, type) VALUES(?, ?, ?)";
@@ -302,8 +502,7 @@ public class ProjectDatabaseManager {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("Error managing tag: " + e.getMessage());
-            e.printStackTrace();
+            throw new DatabaseException("Error managing tag: " + value, e);
         }
         return -1;
     }
@@ -317,8 +516,7 @@ public class ProjectDatabaseManager {
             pstmt.setDouble(3, confidence);
             pstmt.executeUpdate();
         } catch (SQLException e) {
-            System.err.println("Error linking tag to asset: " + e.getMessage());
-            e.printStackTrace();
+            throw new DatabaseException("Error linking tag to asset: " + assetPath, e);
         }
     }
     
@@ -333,7 +531,7 @@ public class ProjectDatabaseManager {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            throw new DatabaseException("Failed to get asset count for type " + type, e);
         }
         return 0;
     }
@@ -348,7 +546,7 @@ public class ProjectDatabaseManager {
                 assets.add(mapResultSetToAsset(rs));
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            throw new DatabaseException("Failed to get all assets", e);
         }
         return assets;
     }
@@ -364,7 +562,7 @@ public class ProjectDatabaseManager {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            throw new DatabaseException("Failed to get asset by path: " + path, e);
         }
         return null;
     }

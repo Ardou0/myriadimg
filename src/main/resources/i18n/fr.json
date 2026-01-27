@@ -28,6 +28,17 @@
       "path_copied": "Chemin copié dans le presse-papier"
     }
   },
+  "new_project": {
+    "title": "Nouveau Projet",
+    "label_name": "Nom du projet",
+    "placeholder_name": "Ex: Vacances 2023",
+    "label_path": "Dossier Source",
+    "placeholder_path": "Sélectionnez un dossier...",
+    "btn_cancel": "Annuler",
+    "btn_create": "Créer le projet",
+    "error_empty": "Veuillez remplir tous les champs.",
+    "error_create": "Impossible de créer le projet."
+  },
   "project": {
     "btn_back": "Dashboard",
     "btn_scan": "Scanner",
