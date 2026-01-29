@@ -21,6 +21,11 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+/**
+ * Unit tests for {@link MediaConverterService}.
+ * Tests the media conversion logic, including OpenCV integration and fallback to native FFMPEG.
+ * Ensures that complex image and video formats are correctly processed or gracefully handled on failure.
+ */
 @ExtendWith(MockitoExtension.class)
 class MediaConverterServiceTest {
 
@@ -32,18 +37,21 @@ class MediaConverterServiceTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        // Inject mocked NativeFFMPEGService using reflection
+        // Inject mocked NativeFFMPEGService using reflection to bypass private field access
         Field field = MediaConverterService.class.getDeclaredField("nativeFFMPEGService");
         field.setAccessible(true);
         field.set(mediaConverterService, nativeFFMPEGService);
     }
 
+    /**
+     * Verifies that complex images (e.g., HEIC) are successfully converted using OpenCV when available.
+     */
     @Test
     void testConvertComplexImage_OpenCVSuccess() {
         File sourceFile = new File("test_image.heic");
         int width = 800;
 
-        // Use a REAL Mat instead of a mock to avoid Native Method NPE
+        // Use a REAL Mat instead of a mock to avoid Native Method NPE in OpenCV internals
         Mat realMat = new Mat(10, 10, opencv_core.CV_8UC3);
 
         // Spy on the method that calls imread to return our real Mat
@@ -79,6 +87,9 @@ class MediaConverterServiceTest {
         }
     }
 
+    /**
+     * Verifies that the service falls back to NativeFFMPEGService if OpenCV fails to load the image.
+     */
     @Test
     void testConvertComplexImage_OpenCVFail_NativeFallback() {
         File sourceFile = new File("test_image.heic");
@@ -105,6 +116,9 @@ class MediaConverterServiceTest {
         verify(nativeFFMPEGService).decodeComplexImage(eq(sourceFile), eq(width));
     }
 
+    /**
+     * Verifies that the service returns null if both OpenCV and NativeFFMPEGService fail.
+     */
     @Test
     void testConvertComplexImage_AllFail() {
         File sourceFile = new File("test_image.heic");
@@ -123,6 +137,9 @@ class MediaConverterServiceTest {
         assertNull(result, "Result should be null when all methods fail");
     }
 
+    /**
+     * Verifies that complex video conversion delegates correctly to NativeFFMPEGService.
+     */
     @Test
     void testConvertComplexVideo_Success() {
         File sourceFile = new File("test_video.mkv");

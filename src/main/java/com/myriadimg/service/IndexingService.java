@@ -226,10 +226,8 @@ public class IndexingService extends Task<Void> implements ThrottlableService {
     
     public void stopService() {
         if (isRunning()) {
-            cancel(); // This will trigger the appropriate callback (cancelled() or failed())
+            cancel();
         } else {
-            // If the service isn't running, it might not have been started.
-            // We still need to clean it up and unregister it.
             shutdownAndUnregister();
         }
     }

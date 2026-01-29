@@ -18,6 +18,11 @@ import java.nio.file.Path;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+/**
+ * Unit tests for {@link ThumbnailService}.
+ * Tests the thumbnail generation pipeline, ensuring that standard images use lightweight processing,
+ * while complex formats (HEIC, Video) fallback to the heavier MediaConverterService.
+ */
 class ThumbnailServiceTest {
 
     @Mock
@@ -53,6 +58,10 @@ class ThumbnailServiceTest {
         mockedServiceManager.close();
     }
 
+    /**
+     * Verifies that standard image formats (e.g., JPG) are processed using the internal Thumbnailator logic
+     * and do not trigger the heavy MediaConverterService.
+     */
     @Test
     void testProcessThumbnail_StandardImage_ShouldUseThumbnailator() throws IOException {
         // Arrange
@@ -71,6 +80,9 @@ class ThumbnailServiceTest {
         verify(mediaConverterService, never()).convertComplexVideo(any(), anyInt());
     }
 
+    /**
+     * Verifies that video files trigger the MediaConverterService fallback when JCodec fails or is bypassed.
+     */
     @Test
     void testProcessThumbnail_Video_FallbackToConverter() throws IOException {
         // Arrange
@@ -94,6 +106,9 @@ class ThumbnailServiceTest {
         verify(dbManager, times(1)).updateAssetThumbnail(eq(filename), eq(dummyBytes));
     }
 
+    /**
+     * Verifies that complex image formats (e.g., HEIC) immediately delegate to MediaConverterService.
+     */
     @Test
     void testProcessThumbnail_ComplexImage_ShouldCallConverter() throws IOException {
         // Arrange
@@ -113,6 +128,9 @@ class ThumbnailServiceTest {
         verify(dbManager, times(1)).updateAssetThumbnail(eq(filename), eq(dummyBytes));
     }
 
+    /**
+     * Verifies that processing a non-existent file logs an error and does not attempt to update the database.
+     */
     @Test
     void testProcessThumbnail_FileNotFound_ShouldLogAndSkip() {
         // Arrange
@@ -126,6 +144,9 @@ class ThumbnailServiceTest {
         verify(mediaConverterService, never()).convertComplexImage(any(), anyInt());
     }
 
+    /**
+     * Verifies that if all conversion methods fail, a placeholder thumbnail is still generated and saved.
+     */
     @Test
     void testProcessThumbnail_AllFail_ShouldUsePlaceholder() throws IOException {
         // Arrange
