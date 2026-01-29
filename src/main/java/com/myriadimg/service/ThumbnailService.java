@@ -33,15 +33,21 @@ public class ThumbnailService extends Service<Void> implements ThrottlableServic
     private static final float JPEG_QUALITY = 0.6f;
     
     private Consumer<String> onThumbnailGenerated;
-    private final MediaConverterService mediaConverterService = new MediaConverterService();
+    private final MediaConverterService mediaConverterService;
     
     // Global ExecutorService to handle cancellation cleanly
     private ThreadPoolExecutor executor;
 
     public ThumbnailService(Path projectRoot, ProjectDatabaseManager dbManager, int targetSize) {
+        this(projectRoot, dbManager, targetSize, new MediaConverterService());
+    }
+
+    // Package-private constructor for testing
+    ThumbnailService(Path projectRoot, ProjectDatabaseManager dbManager, int targetSize, MediaConverterService mediaConverterService) {
         this.projectRoot = projectRoot;
         this.dbManager = dbManager;
         this.targetSize = targetSize;
+        this.mediaConverterService = mediaConverterService;
         ServiceManager.getInstance().registerService(this);
     }
     
@@ -182,7 +188,7 @@ public class ThumbnailService extends Service<Void> implements ThrottlableServic
         ServiceManager.getInstance().unregisterService(this);
     }
 
-    private void processThumbnail(String relativePath) {
+    void processThumbnail(String relativePath) {
         File file = new File(projectRoot.toFile(), relativePath);
         if (!file.exists()) {
             ProjectLogger.logError(projectRoot, "ThumbnailService", "File not found for thumbnail generation: " + relativePath, null);

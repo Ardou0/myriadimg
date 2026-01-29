@@ -15,6 +15,9 @@ public class DatabaseManager {
     private static final String DB_NAME = "myriadimg_global.db";
     private static final String APP_DIR = ".MyriadImgGlobal";
 
+    // Field for custom connection URL (for testing)
+    private static String customConnectionUrl = null;
+
     static {
         try {
             Class.forName("org.sqlite.JDBC");
@@ -24,12 +27,33 @@ public class DatabaseManager {
     }
 
     /**
+     * Sets a custom JDBC connection URL.
+     * Useful for testing (e.g., "jdbc:sqlite::memory:") or using a different database location.
+     * Pass null to revert to the default behavior.
+     *
+     * @param url The JDBC connection URL to use.
+     */
+    public static void setConnectionUrl(String url) {
+        customConnectionUrl = url;
+    }
+
+    /**
      * Establishes a connection to the global SQLite database.
-     * Creates the application directory if it doesn't exist.
+     * Creates the application directory if it doesn't exist and no custom URL is set.
      *
      * @return A Connection object or null if connection failed.
      */
     public static Connection connect() {
+        if (customConnectionUrl != null) {
+            try {
+                return DriverManager.getConnection(customConnectionUrl);
+            } catch (SQLException e) {
+                System.err.println("Connection failed to custom URL: " + e.getMessage());
+                e.printStackTrace();
+                return null;
+            }
+        }
+
         String userHome = System.getProperty("user.home");
         File appDir = new File(userHome, APP_DIR);
         if (!appDir.exists()) {
@@ -55,10 +79,14 @@ public class DatabaseManager {
      * Creates the 'projects' table if it doesn't exist and handles basic migrations.
      */
     public static void initialize() {
-        String userHome = System.getProperty("user.home");
-        File appDir = new File(userHome, APP_DIR);
-        File dbFile = new File(appDir, DB_NAME);
-        System.out.println("Global Database Location: " + dbFile.getAbsolutePath());
+        if (customConnectionUrl == null) {
+            String userHome = System.getProperty("user.home");
+            File appDir = new File(userHome, APP_DIR);
+            File dbFile = new File(appDir, DB_NAME);
+            System.out.println("Global Database Location: " + dbFile.getAbsolutePath());
+        } else {
+            System.out.println("Global Database Location: " + customConnectionUrl);
+        }
 
         // Added display_order column
         String sql = "CREATE TABLE IF NOT EXISTS projects (\n"

@@ -59,7 +59,7 @@ public class MediaConverterService {
         try {
             // OpenCV loads the image directly. It handles HEIC if codecs are present (which is the case via JavaCV).
             // IMREAD_COLOR forces conversion to BGR (OpenCV standard) and ignores alpha transparency which can be buggy
-            mat = imread(sourceFile.getAbsolutePath(), IMREAD_COLOR);
+            mat = loadMat(sourceFile.getAbsolutePath(), IMREAD_COLOR);
 
             if (mat == null || mat.empty()) {
                 return null;
@@ -84,6 +84,11 @@ public class MediaConverterService {
                 mat.release();
             }
         }
+    }
+
+    // Protected method to facilitate testing (Spying)
+    protected Mat loadMat(String path, int flags) {
+        return imread(path, flags);
     }
 
     private byte[] convertWithNativeLoader(File sourceFile, int width) {

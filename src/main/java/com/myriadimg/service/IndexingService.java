@@ -2,6 +2,7 @@ package com.myriadimg.service;
 
 import com.myriadimg.model.Asset;
 import com.myriadimg.repository.ProjectDatabaseManager;
+import com.myriadimg.util.FileUtils;
 import com.myriadimg.util.ProjectLogger;
 import javafx.concurrent.Task;
 
@@ -12,7 +13,6 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -154,8 +154,8 @@ public class IndexingService extends Task<Void> implements ThrottlableService {
                         return FileVisitResult.CONTINUE;
                     }
 
-                    String fileName = fileNamePath.toString().toLowerCase();
-                    String extension = getExtension(fileName);
+                    String fileName = fileNamePath.toString();
+                    String extension = FileUtils.getExtension(fileName);
                     
                     if (IMAGE_EXTENSIONS.contains(extension) || VIDEO_EXTENSIONS.contains(extension)) {
                         submitTask(() -> processFile(file, assetQueue, existingHashes));
@@ -195,9 +195,6 @@ public class IndexingService extends Task<Void> implements ThrottlableService {
         updateMessage(completionMsg);
         updateProgress(1, 1);
         
-        ServiceManager.getInstance().unregisterService(this);
-        ServiceManager.getInstance().updateGlobalStatus();
-        
         return null;
     }
     
@@ -208,17 +205,36 @@ public class IndexingService extends Task<Void> implements ThrottlableService {
             }
         }
     }
-    
+
+    @Override
+    protected void succeeded() {
+        super.succeeded();
+        shutdownAndUnregister();
+    }
+
     @Override
     protected void cancelled() {
         super.cancelled();
-        stopService();
+        shutdownAndUnregister();
+    }
+
+    @Override
+    protected void failed() {
+        super.failed();
+        shutdownAndUnregister();
     }
     
     public void stopService() {
         if (isRunning()) {
-            cancel();
+            cancel(); // This will trigger the appropriate callback (cancelled() or failed())
+        } else {
+            // If the service isn't running, it might not have been started.
+            // We still need to clean it up and unregister it.
+            shutdownAndUnregister();
         }
+    }
+    
+    private void shutdownAndUnregister() {
         synchronized (executorLock) {
             if (executor != null && !executor.isShutdown()) {
                 executor.shutdownNow();
@@ -229,12 +245,6 @@ public class IndexingService extends Task<Void> implements ThrottlableService {
         }
         ServiceManager.getInstance().unregisterService(this);
         ServiceManager.getInstance().updateGlobalStatus();
-    }
-
-    @Override
-    protected void failed() {
-        super.failed();
-        stopService();
     }
     
     private void flushBuffer(List<Asset> buffer, AtomicInteger processedCount, int existingCount) {
@@ -257,15 +267,17 @@ public class IndexingService extends Task<Void> implements ThrottlableService {
             String hash = calculatePartialHash(file, size);
 
             if (!existingHashes.contains(hash)) {
-                LocalDateTime creationDate = LocalDateTime.ofInstant(attrs.creationTime().toInstant(), ZoneId.systemDefault());
+                // Use MetadataService to extract the best creation date (EXIF priority)
+                LocalDateTime creationDate = MetadataService.getInstance().extractDate(file.toFile());
+
                 String pathStr = rootPath.relativize(file).toString();
                 
                 Asset.AssetType type = Asset.AssetType.UNKNOWN;
                 Path fileNamePath = file.getFileName();
                 if (fileNamePath == null) return;
 
-                String fileName = fileNamePath.toString().toLowerCase();
-                String extension = getExtension(fileName);
+                String fileName = fileNamePath.toString();
+                String extension = FileUtils.getExtension(fileName);
                 
                 if (IMAGE_EXTENSIONS.contains(extension)) {
                     type = Asset.AssetType.IMAGE;
@@ -284,14 +296,6 @@ public class IndexingService extends Task<Void> implements ThrottlableService {
                 ProjectLogger.logError(rootPath, "IndexingService", "Error processing file " + file, e);
             }
         }
-    }
-
-    private String getExtension(String fileName) {
-        int i = fileName.lastIndexOf('.');
-        if (i > 0) {
-            return fileName.substring(i + 1);
-        }
-        return "";
     }
 
     private String calculatePartialHash(Path file, long fileSize) throws IOException, NoSuchAlgorithmException {

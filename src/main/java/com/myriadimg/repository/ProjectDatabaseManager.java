@@ -74,8 +74,20 @@ public class ProjectDatabaseManager {
         initialize();
     }
 
+    // Constructor for testing purposes
+    public ProjectDatabaseManager(String connectionUrl, boolean isTest) {
+        this.connectionUrl = connectionUrl;
+        if (isTest) {
+            initialize();
+        }
+    }
+
     private Connection connect() throws SQLException {
-        return DriverManager.getConnection(connectionUrl);
+        Connection conn = DriverManager.getConnection(connectionUrl);
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute("PRAGMA foreign_keys = ON;");
+        }
+        return conn;
     }
 
     /**
@@ -85,15 +97,18 @@ public class ProjectDatabaseManager {
     private void initialize() {
         try (Connection conn = connect()) {
             // Enable WAL mode for better concurrency and performance
-            try (Statement stmt = conn.createStatement()) {
-                stmt.execute("PRAGMA journal_mode=WAL;");
-                stmt.execute("PRAGMA synchronous=NORMAL;");
+            // Skip WAL mode for in-memory databases as it's not supported/needed
+            if (!connectionUrl.contains(":memory:")) {
+                try (Statement stmt = conn.createStatement()) {
+                    stmt.execute("PRAGMA journal_mode=WAL;");
+                    stmt.execute("PRAGMA synchronous=NORMAL;");
+                }
             }
 
             conn.setAutoCommit(false);
             try (Statement stmt = conn.createStatement()) {
-                // 1. Enable Foreign Keys
-                stmt.execute("PRAGMA foreign_keys = ON;");
+                // Foreign keys are already enabled in connect(), but no harm checking/setting again if needed.
+                // However, connect() is called above, so it's active for 'conn'.
 
                 // 2. Check Version
                 int version = 0;
