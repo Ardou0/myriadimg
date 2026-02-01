@@ -60,7 +60,7 @@ class MetadataServiceTest {
             when(directory.getDate(ExifSubIFDDirectory.TAG_DATETIME_ORIGINAL)).thenReturn(date);
 
             // Execute
-            LocalDateTime result = MetadataService.getInstance().extractDate(imageFile);
+            LocalDateTime result = MetadataService.getInstance().extractDate(imageFile, tempDir);
 
             // Verify
             assertEquals(exifDate, result, "Should prioritize EXIF date");
@@ -93,7 +93,7 @@ class MetadataServiceTest {
             mockedFiles.when(() -> Files.readAttributes(any(Path.class), eq(BasicFileAttributes.class))).thenReturn(attrs);
 
             // Execute
-            LocalDateTime result = MetadataService.getInstance().extractDate(imageFile);
+            LocalDateTime result = MetadataService.getInstance().extractDate(imageFile, tempDir);
 
             // Verify
             assertEquals(fsDate, result, "Should fallback to File System date");

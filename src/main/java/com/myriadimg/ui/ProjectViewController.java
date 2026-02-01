@@ -2,6 +2,7 @@ package com.myriadimg.ui;
 
 import com.myriadimg.model.Asset;
 import com.myriadimg.model.Project;
+import com.myriadimg.model.Tag;
 import com.myriadimg.repository.ProjectDatabaseManager;
 import com.myriadimg.service.IndexingService;
 import com.myriadimg.service.ServiceManager;
@@ -23,7 +24,9 @@ import javafx.scene.Parent;
 import javafx.scene.control.*;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyCode;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
+import javafx.scene.shape.SVGPath;
 import javafx.stage.Stage;
 
 import java.io.File;
@@ -32,6 +35,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 public class ProjectViewController {
 
@@ -49,9 +53,15 @@ public class ProjectViewController {
     @FXML private ComboBox<String> viewModeCombo;
     @FXML private Slider thumbnailSizeSlider;
 
+    @FXML private TitledPane typeTagsPane;
+    @FXML private TitledPane locationTagsPane;
     @FXML private TitledPane aiTagsPane;
     @FXML private TitledPane peoplePane;
     @FXML private TitledPane manualTagsPane;
+    @FXML private TitledPane specialSettingsPane; // New Pane
+    @FXML private CheckBox showIconsCheckbox; // New Checkbox
+    @FXML private VBox typeTagsContainer;
+    @FXML private VBox locationTagsContainer;
     @FXML private VBox aiTagsContainer;
     @FXML private VBox peopleContainer;
     @FXML private VBox manualTagsContainer;
@@ -76,10 +86,7 @@ public class ProjectViewController {
     
     // Grid View Components (Virtualization)
     private ListView<List<Asset>> gridListView;
-    
-    // Folder View Components (Virtualization)
     private TreeView<Object> folderTreeView;
-
     // Details Controller (Injected via fx:include)
     @FXML private AssetDetailsController assetDetailsController;
 
@@ -104,7 +111,17 @@ public class ProjectViewController {
 
     // Cache of all assets to avoid re-querying DB on view switch
     private List<Asset> allAssets = new ArrayList<>();
+    private List<Asset> filteredAssets = new ArrayList<>();
     
+    // Filter state
+    private final Set<String> selectedTagValues = new HashSet<>();
+    
+    // Faceted Search State
+    private final Map<String, HBox> tagUiElements = new HashMap<>();
+    private final Map<String, Label> tagCountLabels = new HashMap<>();
+    
+    private int currentFolderColumns = -1;
+
     // Image Loading Management
     private final ExecutorService imageLoadExecutor = Executors.newFixedThreadPool(4, r -> {
         Thread t = new Thread(r);
@@ -146,7 +163,14 @@ public class ProjectViewController {
                 this.thumbnailService.setOnThumbnailGenerated(this::onThumbnailGenerated);
 
                 Platform.runLater(() -> {
-                    loadAssetsFromDb();
+                    // Ensure type tags exist for all assets (maintenance task)
+                    new Thread(() -> {
+                        dbManager.ensureTypeTagsExist();
+                        Platform.runLater(() -> {
+                            loadAssetsFromDb();
+                            loadTagsFromDb();
+                        });
+                    }).start();
 
                     // Trigger required actions
                     if (scanRequired) {
@@ -165,7 +189,6 @@ public class ProjectViewController {
                     // Map saved mode key to UI text
                     String uiMode = "grid".equals(savedMode) ? i18n.get("project.view_mode.grid") :
                                     "folders".equals(savedMode) ? i18n.get("project.view_mode.folders") :
-                                    "themes".equals(savedMode) ? i18n.get("project.view_mode.themes") :
                                     i18n.get("project.view_mode.grid");
                                     
                     viewModeCombo.getSelectionModel().select(uiMode);
@@ -208,6 +231,7 @@ public class ProjectViewController {
                                 updateStatusBubble(statusScanLabel, i18n.get("project.activity.status.completed"), "success");
                                 statusScanProgress.setProgress(1.0);
                                 loadAssetsFromDb(); // Refresh view
+                                loadTagsFromDb(); // Refresh tags
                             } else {
                                 updateStatusBubble(statusScanLabel, i18n.get("project.activity.status.error"), "error");
                                 statusScanProgress.setProgress(0);
@@ -257,6 +281,18 @@ public class ProjectViewController {
                     }
                 }
             }
+            // Also update tree view if visible
+            if (folderTreeView != null && folderTreeView.isVisible()) {
+                Set<Node> nodes = folderTreeView.lookupAll(".asset-thumbnail");
+                for (Node node : nodes) {
+                    if (node instanceof ImageView) {
+                        ImageView view = (ImageView) node;
+                        if (relativePath.equals(view.getUserData())) {
+                            loadImageAsync(view, relativePath);
+                        }
+                    }
+                }
+            }
         });
     }
 
@@ -275,7 +311,7 @@ public class ProjectViewController {
         gridListView.setFocusTraversable(false);
         // Remove default list style
         gridListView.setStyle("-fx-background-color: #F4F6F8;");
-        
+
         // Initialize Folder TreeView (Virtualized replacement for ScrollPane/VBox)
         folderTreeView = new TreeView<>();
         folderTreeView.setShowRoot(false);
@@ -285,7 +321,7 @@ public class ProjectViewController {
 
         updateUIWithI18n();
         setupCombos();
-        setupFilters();
+        // setupFilters(); // Removed static setup, now dynamic
         setupLayoutPersistence();
         setupConfirmationOverlay();
 
@@ -293,8 +329,8 @@ public class ProjectViewController {
             if (viewModeCombo.getSelectionModel().getSelectedIndex() == 0) { // Grid mode
                 repartitionGrid();
             } else {
-                // For folder view, we might want to refresh if we show thumbnails in tree
-                // But currently tree view is mostly text/structure
+                // Also update folder view if visible
+                renderFolderView();
             }
         });
         
@@ -302,6 +338,18 @@ public class ProjectViewController {
         viewContainer.widthProperty().addListener((obs, oldVal, newVal) -> {
             if (viewModeCombo.getSelectionModel().getSelectedIndex() == 0) { // Grid mode
                 repartitionGrid();
+            } else {
+                // Check if columns would change
+                double width = newVal.doubleValue();
+                if (width <= 0) width = 800;
+                double cardWidth = thumbnailSizeSlider.getValue() + 20;
+                double gap = 10;
+                double scrollBarAllowance = 40;
+                int newCols = Math.max(1, (int) ((width - scrollBarAllowance) / (cardWidth + gap)));
+                
+                if (newCols != currentFolderColumns) {
+                    renderFolderView();
+                }
             }
         });
 
@@ -311,43 +359,109 @@ public class ProjectViewController {
             // Save view mode to project settings
             if (currentProject != null && newVal != null) {
                 String modeKey = "grid";
+
                 if (newVal.equals(i18n.get("project.view_mode.folders"))) modeKey = "folders";
-                else if (newVal.equals(i18n.get("project.view_mode.themes"))) modeKey = "themes";
                 
                 settings.setProjectViewMode(currentProject.getPath(), modeKey);
             }
         });
+        
+        // Listen to showIconsCheckbox
+        if (showIconsCheckbox != null) {
+            showIconsCheckbox.selectedProperty().addListener((obs, oldVal, newVal) -> {
+                applyFilters();
+            });
+        }
     }
-    
+
     private void repartitionGrid() {
-        if (allAssets.isEmpty()) return;
-        
+        if (filteredAssets.isEmpty()) {
+            gridListView.setItems(FXCollections.observableArrayList());
+            return;
+        }
+
         double width = viewContainer.getWidth();
-        if (width <= 0) width = 800; // Default fallback
-        
+        // Si la largeur n'est pas encore disponible (ex: au démarrage), on attend
+        if (width <= 0) {
+            // On peut réessayer plus tard si nécessaire, ou utiliser une valeur par défaut raisonnable
+            // Mais pour l'instant, gardons le fallback
+            width = 800;
+        }
+
         double cardWidth = thumbnailSizeSlider.getValue() + 20; // + padding/margin
         double gap = 10;
         double scrollBarAllowance = 20; // Space for scrollbar
-        
+
         // Calculate columns (at least 1)
         int columns = Math.max(1, (int) ((width - scrollBarAllowance) / (cardWidth + gap)));
-        
+
         // Calculate padding to center the grid
         double contentWidth = columns * cardWidth + (columns - 1) * gap;
         double totalPadding = width - contentWidth - scrollBarAllowance;
-        double leftPadding = Math.max(10, totalPadding / 2);
-        
+
+        // Ensure padding is non-negative and balanced
+        double leftPadding = Math.max(0, totalPadding / 2);
+
         // Apply padding to the ListView to center the content
+        // Important: Reset padding first to avoid accumulation issues if any
         gridListView.setPadding(new Insets(10, 0, 10, leftPadding));
-        
+
         List<List<Asset>> rows = new ArrayList<>();
-        for (int i = 0; i < allAssets.size(); i += columns) {
-            int end = Math.min(i + columns, allAssets.size());
-            rows.add(new ArrayList<>(allAssets.subList(i, end)));
+        for (int i = 0; i < filteredAssets.size(); i += columns) {
+            int end = Math.min(i + columns, filteredAssets.size());
+            rows.add(new ArrayList<>(filteredAssets.subList(i, end)));
         }
-        
+
         ObservableList<List<Asset>> items = FXCollections.observableArrayList(rows);
         gridListView.setItems(items);
+
+        // Scroll to top when refreshing content
+        gridListView.scrollTo(0);
+    }
+    
+    private void updateRowBox(HBox root, List<VBox> cardPool, List<Asset> rowAssets) {
+        if (rowAssets == null) {
+            root.getChildren().clear();
+            return;
+        }
+        
+        // Ensure we have enough cards in the pool
+        while (cardPool.size() < rowAssets.size()) {
+            cardPool.add(createEmptyCard());
+        }
+        
+        // Sync children without clearing
+        int currentSize = root.getChildren().size();
+        int targetSize = rowAssets.size();
+        
+        if (currentSize > targetSize) {
+            root.getChildren().remove(targetSize, currentSize);
+        } else if (currentSize < targetSize) {
+            for (int i = currentSize; i < targetSize; i++) {
+                root.getChildren().add(cardPool.get(i));
+            }
+        }
+        
+        for (int i = 0; i < rowAssets.size(); i++) {
+            Asset asset = rowAssets.get(i);
+            VBox card = cardPool.get(i);
+            
+            ImageView view = findImageView(card);
+            String oldPath = (view != null) ? (String) view.getUserData() : null;
+            boolean sameAsset = asset.getPath().equals(oldPath);
+            
+            populateAssetCard(card, asset); // Updates userData
+            
+            if (view != null) {
+                if (!sameAsset) {
+                    view.setImage(null); // Clear previous image to avoid showing wrong image while loading
+                    loadImageAsync(view, asset);
+                } else {
+                    // Same asset, update image if needed (e.g. better quality available)
+                    loadImageAsync(view, asset);
+                }
+            }
+        }
     }
 
     private class AssetGridCell extends ListCell<List<Asset>> {
@@ -373,78 +487,10 @@ public class ProjectViewController {
                 return;
             }
             
-            // Ensure we have enough cards in the pool
-            while (cardPool.size() < rowAssets.size()) {
-                cardPool.add(createEmptyCard());
-            }
-            
-            // Sync children without clearing
-            int currentSize = root.getChildren().size();
-            int targetSize = rowAssets.size();
-            
-            if (currentSize > targetSize) {
-                root.getChildren().remove(targetSize, currentSize);
-            } else if (currentSize < targetSize) {
-                for (int i = currentSize; i < targetSize; i++) {
-                    root.getChildren().add(cardPool.get(i));
-                }
-            }
-            
-            for (int i = 0; i < rowAssets.size(); i++) {
-                Asset asset = rowAssets.get(i);
-                VBox card = cardPool.get(i);
-                
-                ImageView view = findImageView(card);
-                String oldPath = (view != null) ? (String) view.getUserData() : null;
-                boolean sameAsset = asset.getPath().equals(oldPath);
-                
-                populateAssetCard(card, asset); // Updates userData
-                
-                if (view != null) {
-                    if (!sameAsset) {
-                        view.setImage(null); // Clear previous image to avoid showing wrong image while loading
-                        loadImageAsync(view, asset);
-                    } else {
-                        // Same asset, update image if needed (e.g. better quality available)
-                        loadImageAsync(view, asset);
-                    }
-                }
-            }
+            updateRowBox(root, cardPool, rowAssets);
         }
     }
     
-    // --- Folder View Virtualization ---
-    
-    private class FolderTreeCell extends TreeCell<Object> {
-        @Override
-        protected void updateItem(Object item, boolean empty) {
-            super.updateItem(item, empty);
-            
-            if (empty || item == null) {
-                setText(null);
-                setGraphic(null);
-            } else {
-                if (item instanceof FolderNode) {
-                    FolderNode node = (FolderNode) item;
-                    setText(node.name + " (" + node.totalAssets + ")");
-                    // Could add folder icon here
-                } else if (item instanceof Asset) {
-                    Asset asset = (Asset) item;
-                    setText(new File(asset.getPath()).getName());
-                    // Could add mini thumbnail here
-                    setGraphic(null); // Or a small icon
-                    
-                    // Handle selection
-                    setOnMouseClicked(e -> {
-                        if (assetDetailsController != null) {
-                            assetDetailsController.showAssetDetails(asset);
-                        }
-                    });
-                }
-            }
-        }
-    }
-
     private void loadImageAsync(ImageView view, Asset asset) {
         loadImageAsync(view, asset.getPath());
     }
@@ -565,9 +611,15 @@ public class ProjectViewController {
         scanButton.setText(i18n.get("project.btn_scan"));
         searchField.setPromptText(i18n.get("project.search_placeholder"));
 
+        typeTagsPane.setText(i18n.get("project.sidebar.tags_type"));
+        locationTagsPane.setText("Lieux"); // TODO: Add to i18n
         aiTagsPane.setText(i18n.get("project.sidebar.tags_ai"));
         peoplePane.setText(i18n.get("project.sidebar.people"));
         manualTagsPane.setText(i18n.get("project.sidebar.tags_manual"));
+        
+        // Special Settings
+        specialSettingsPane.setText(i18n.get("project.sidebar.tags_special"));
+        showIconsCheckbox.setText(i18n.get("project.sidebar.show_icons"));
         
         // Activity Monitor
         activityTitleLabel.setText(i18n.get("project.activity.title"));
@@ -600,39 +652,103 @@ public class ProjectViewController {
         viewModeCombo.getItems().clear();
         viewModeCombo.getItems().addAll(
                 i18n.get("project.view_mode.grid"),
-                i18n.get("project.view_mode.folders"),
-                i18n.get("project.view_mode.themes")
+                i18n.get("project.view_mode.folders")
+                // Folders and Themes removed
         );
         viewModeCombo.getSelectionModel().select(0);
     }
 
-    private void setupFilters() {
-        // AI Tags (Standard Checkbox)
-        addFilterCheckbox(aiTagsContainer, "Plage (12)", false);
-        addFilterCheckbox(aiTagsContainer, "Montagne (5)", false);
-        addFilterCheckbox(aiTagsContainer, "Voiture (34)", false);
+    private void loadTagsFromDb() {
+        if (dbManager == null) return;
+        
+        Map<Tag.TagType, List<Tag>> groupedTags = dbManager.getAllTagsGroupedByType();
+        
+        Platform.runLater(() -> {
+            // Clear existing
+            typeTagsContainer.getChildren().clear();
+            locationTagsContainer.getChildren().clear();
+            aiTagsContainer.getChildren().clear();
+            peopleContainer.getChildren().clear();
+            manualTagsContainer.getChildren().clear();
+            
+            tagUiElements.clear();
+            tagCountLabels.clear();
+            
+            // Populate Type Tags
+            if (groupedTags.containsKey(Tag.TagType.TYPE)) {
+                for (Tag tag : groupedTags.get(Tag.TagType.TYPE)) {
+                    addFilterCheckbox(typeTagsContainer, tag, false);
+                }
+            }
+            
+            // Populate Location Tags
+            if (groupedTags.containsKey(Tag.TagType.LOCATION)) {
+                for (Tag tag : groupedTags.get(Tag.TagType.LOCATION)) {
+                    addFilterCheckbox(locationTagsContainer, tag, false);
+                }
+            }
 
-        // People (Editable Checkbox)
-        addFilterCheckbox(peopleContainer, "Maman (45)", true);
-        addFilterCheckbox(peopleContainer, "Inconnu #1 (2)", true);
-
-        // Manual Tags (Standard Checkbox)
-        addFilterCheckbox(manualTagsContainer, "Vacances 2023", false);
-        addFilterCheckbox(manualTagsContainer, "Anniversaire", false);
+            // Populate AI Tags (Scene + Object)
+            List<Tag> aiTags = new ArrayList<>();
+            if (groupedTags.containsKey(Tag.TagType.AI_SCENE)) aiTags.addAll(groupedTags.get(Tag.TagType.AI_SCENE));
+            if (groupedTags.containsKey(Tag.TagType.AI_OBJECT)) aiTags.addAll(groupedTags.get(Tag.TagType.AI_OBJECT));
+            
+            for (Tag tag : aiTags) {
+                addFilterCheckbox(aiTagsContainer, tag, false);
+            }
+            
+            // Populate People
+            if (groupedTags.containsKey(Tag.TagType.AI_PERSON)) {
+                for (Tag tag : groupedTags.get(Tag.TagType.AI_PERSON)) {
+                    addFilterCheckbox(peopleContainer, tag, true);
+                }
+            }
+            
+            // Populate Manual Tags
+            if (groupedTags.containsKey(Tag.TagType.MANUAL)) {
+                for (Tag tag : groupedTags.get(Tag.TagType.MANUAL)) {
+                    addFilterCheckbox(manualTagsContainer, tag, false);
+                }
+            }
+            
+            // Initial update of facets
+            updateTagFacets();
+        });
     }
 
-    private void addFilterCheckbox(VBox container, String text, boolean editable) {
+    private void addFilterCheckbox(VBox container, Tag tag, boolean editable) {
         HBox cell = new HBox(8); // More spacing
         cell.setAlignment(Pos.CENTER_LEFT);
         cell.getStyleClass().add("tag-cell");
+        
+        // Store reference to UI element
+        tagUiElements.put(tag.getValue(), cell);
 
         CheckBox cb = new CheckBox();
         cb.getStyleClass().add("modern-checkbox");
+        
+        // Restore selection state if reloaded
+        if (selectedTagValues.contains(tag.getValue())) {
+            cb.setSelected(true);
+        }
+        
+        cb.selectedProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal) {
+                selectedTagValues.add(tag.getValue());
+            } else {
+                selectedTagValues.remove(tag.getValue());
+            }
+            applyFilters();
+        });
 
-        Label label = new Label(text);
+        // Use pseudo for display, but we will update the count dynamically
+        Label label = new Label(tag.getPseudo());
         label.getStyleClass().add("filter-label"); // Dark text
         label.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(label, Priority.ALWAYS);
+        
+        // Store reference to label for updating count
+        tagCountLabels.put(tag.getValue(), label);
 
         if (editable) {
             Button editBtn = new Button("✎"); // Pencil icon
@@ -681,6 +797,79 @@ public class ProjectViewController {
         }
         cell.getChildren().addAll(cb, label);
         container.getChildren().add(cell);
+    }
+    
+    private void applyFilters() {
+        // Start with all assets
+        List<Asset> baseList = allAssets;
+        
+        // Filter out icons if checkbox is unchecked
+        if (showIconsCheckbox != null) {
+            if (!showIconsCheckbox.isSelected()) {
+                // Normal mode: Show everything EXCEPT icons
+                baseList = baseList.stream()
+                    .filter(asset -> asset.getType() != Asset.AssetType.ICON)
+                    .collect(Collectors.toList());
+            } else {
+                // Icon mode: Show ONLY icons
+                baseList = baseList.stream()
+                    .filter(asset -> asset.getType() == Asset.AssetType.ICON)
+                    .collect(Collectors.toList());
+            }
+        }
+        
+        if (selectedTagValues.isEmpty()) {
+            filteredAssets = new ArrayList<>(baseList);
+        } else {
+            filteredAssets = baseList.stream()
+                .filter(asset -> {
+                    Set<String> assetTagValues = asset.getTags().stream()
+                        .map(Tag::getValue)
+                        .collect(Collectors.toSet());
+                        
+                    return assetTagValues.containsAll(selectedTagValues);
+                })
+                .collect(Collectors.toList());
+        }
+        
+        updateTagFacets();
+        refreshView();
+    }
+    
+    private void updateTagFacets() {
+        // Calculate counts for all tags based on current filteredAssets
+        Map<String, Integer> currentCounts = new HashMap<>();
+        
+        for (Asset asset : filteredAssets) {
+            for (Tag tag : asset.getTags()) {
+                currentCounts.put(tag.getValue(), currentCounts.getOrDefault(tag.getValue(), 0) + 1);
+            }
+        }
+        
+        // Update UI
+        for (Map.Entry<String, HBox> entry : tagUiElements.entrySet()) {
+            String tagValue = entry.getKey();
+            HBox uiElement = entry.getValue();
+            Label label = tagCountLabels.get(tagValue);
+            
+            int count = currentCounts.getOrDefault(tagValue, 0);
+            boolean isSelected = selectedTagValues.contains(tagValue);
+            
+            // Update label text with new count (preserve original name part)
+            if (label != null) {
+                String currentText = label.getText();
+                // Assuming format "Name (Count)" or just "Name"
+                String namePart = currentText.contains("(") ? currentText.substring(0, currentText.lastIndexOf("(")).trim() : currentText;
+                label.setText(namePart + " (" + count + ")");
+            }
+            
+            // Visibility logic:
+            // Show if count > 0 OR if it is currently selected (so user can uncheck it)
+            boolean visible = count > 0 || isSelected;
+            
+            uiElement.setVisible(visible);
+            uiElement.setManaged(visible);
+        }
     }
 
     private void setupConfirmationOverlay() {
@@ -758,6 +947,7 @@ public class ProjectViewController {
             ToastUtil.show(toastContainer, i18n.get("dashboard.toast.title_success"), i18n.get("project.scan_status.complete"), false);
 
             loadAssetsFromDb();
+            loadTagsFromDb(); // Refresh tags
             startThumbnailGeneration(); // Start generating thumbnails for new assets
         });
 
@@ -899,6 +1089,19 @@ public class ProjectViewController {
         // Load counts
         int imageCount = dbManager.getAssetCount(Asset.AssetType.IMAGE);
         int videoCount = dbManager.getAssetCount(Asset.AssetType.VIDEO);
+        int iconCount = dbManager.getAssetCount(Asset.AssetType.ICON);
+        
+        // Update summary label with counts
+        Platform.runLater(() -> {
+            if (summaryValue != null) {
+                summaryValue.setText(String.format("%d Photos, %d Videos, %d Icons", imageCount, videoCount, iconCount));
+            }
+            
+            // Update showIconsCheckbox text with count
+            if (showIconsCheckbox != null) {
+                showIconsCheckbox.setText(i18n.get("project.sidebar.show_icons") + " (" + iconCount + ")");
+            }
+        });
         
         if (assetDetailsController != null) {
             assetDetailsController.updateSummary(imageCount, videoCount);
@@ -906,7 +1109,8 @@ public class ProjectViewController {
 
         // Load assets for grid
         this.allAssets = dbManager.getAllAssets();
-        refreshView();
+        // Re-apply filters to respect current checkbox state
+        applyFilters();
     }
 
     private void refreshView() {
@@ -929,30 +1133,40 @@ public class ProjectViewController {
         viewContainer.getChildren().add(gridListView);
         Platform.runLater(this::repartitionGrid);
     }
-
+    
     private void renderFolderView() {
         viewContainer.getChildren().clear();
         viewContainer.getChildren().add(folderTreeView);
+
+        // Calculate columns
+        double width = viewContainer.getWidth();
+        if (width <= 0) width = 800;
+        double cardWidth = thumbnailSizeSlider.getValue() + 20;
+        double gap = 10;
+        double scrollBarAllowance = 40; // Increased for tree indentation
+        int columns = Math.max(1, (int) ((width - scrollBarAllowance) / (cardWidth + gap)));
         
-        // Build the tree
-        TreeItem<Object> rootItem = new TreeItem<>(new FolderNode("Root"));
+        currentFolderColumns = columns;
+
+        // Build the tree structure
+        FolderNode rootNode = new FolderNode("Root");
+        TreeItem<Object> rootItem = new TreeItem<>(rootNode);
         rootItem.setExpanded(true);
-        
-        // Map to keep track of created folder items
+
         Map<String, TreeItem<Object>> folderItems = new HashMap<>();
-        
-        for (Asset asset : allAssets) {
+
+        for (Asset asset : filteredAssets) {
             Path p = Paths.get(asset.getPath());
             Path parent = p.getParent();
-            
+
             TreeItem<Object> currentItem = rootItem;
             String currentPath = "";
-            
+
             if (parent != null) {
                 for (Path part : parent) {
                     String partName = part.toString();
                     currentPath = currentPath.isEmpty() ? partName : currentPath + File.separator + partName;
-                    
+
                     if (!folderItems.containsKey(currentPath)) {
                         FolderNode node = new FolderNode(partName);
                         TreeItem<Object> newItem = new TreeItem<>(node);
@@ -962,30 +1176,140 @@ public class ProjectViewController {
                     } else {
                         currentItem = folderItems.get(currentPath);
                     }
-                    
+
                     // Update count
                     ((FolderNode)currentItem.getValue()).totalAssets++;
                 }
             }
-            
-            // Add asset as leaf
-            currentItem.getChildren().add(new TreeItem<>(asset));
+
+            // Add asset to the current folder node's list
+            Object value = currentItem.getValue();
+            if (value instanceof FolderNode) {
+                ((FolderNode) value).assets.add(asset);
+            }
         }
         
+        // Iterate over all created TreeItems to add asset rows
+        List<TreeItem<Object>> allItems = new ArrayList<>(folderItems.values());
+        allItems.add(rootItem);
+        
+        for (TreeItem<Object> item : allItems) {
+            Object value = item.getValue();
+            if (value instanceof FolderNode) {
+                FolderNode node = (FolderNode) value;
+                if (!node.assets.isEmpty()) {
+                    // Create rows
+                    for (int i = 0; i < node.assets.size(); i += columns) {
+                        int end = Math.min(i + columns, node.assets.size());
+                        List<Asset> row = new ArrayList<>(node.assets.subList(i, end));
+                        item.getChildren().add(new TreeItem<>(row));
+                    }
+                }
+            }
+        }
+
         folderTreeView.setRoot(rootItem);
     }
-    
+
     private static class FolderNode {
         String name;
         int totalAssets = 0;
-        
+        List<Asset> assets = new ArrayList<>();
+
         FolderNode(String name) {
             this.name = name;
         }
-        
+
         @Override
         public String toString() {
             return name;
         }
     }
+    
+    private class FolderTreeCell extends TreeCell<Object> {
+        private final HBox rowBox;
+        private final List<VBox> cardPool = new ArrayList<>();
+        
+        // Folder Header Components
+        private final HBox headerBox;
+        private final Label folderLabel;
+        private final SVGPath arrowIcon;
+
+        public FolderTreeCell() {
+             // Asset Row
+             rowBox = new HBox(10);
+             rowBox.setAlignment(Pos.CENTER_LEFT);
+             rowBox.setPadding(new Insets(5));
+             rowBox.setStyle("-fx-background-color: transparent;");
+             
+             // Folder Header (Custom UI to replace default TreeCell look)
+             headerBox = new HBox(10);
+             headerBox.setAlignment(Pos.CENTER_LEFT);
+             // Clean style: No border, just padding. 
+             // We will rely on the text size and icon to distinguish it.
+             headerBox.setStyle("-fx-padding: 8px 0px; -fx-cursor: hand;");
+             
+             // Custom Arrow
+             arrowIcon = new SVGPath();
+             arrowIcon.setContent("M 0 0 L 5 5 L 0 10 z"); // Simple triangle pointing right
+             arrowIcon.setStyle("-fx-fill: #7F8C8D;"); // Grey color
+             
+             folderLabel = new Label();
+             // Larger font, dark text
+             folderLabel.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #2C3E50;");
+             
+             headerBox.getChildren().addAll(arrowIcon, folderLabel);
+             
+             // Handle click on header to toggle expansion
+             headerBox.setOnMouseClicked(e -> {
+                 if (getTreeItem() != null) {
+                     getTreeItem().setExpanded(!getTreeItem().isExpanded());
+                 }
+                 e.consume();
+             });
+        }
+        
+        @Override
+        protected void updateItem(Object item, boolean empty) {
+            super.updateItem(item, empty);
+
+            // Always hide the default disclosure node (the default arrow)
+            // We use our own custom arrow inside the headerBox
+            setDisclosureNode(null);
+
+            if (empty || item == null) {
+                setText(null);
+                setGraphic(null);
+                setStyle("-fx-background-color: transparent;");
+            } else {
+                if (item instanceof FolderNode) {
+                    FolderNode node = (FolderNode) item;
+                    folderLabel.setText(node.name + " (" + node.totalAssets + ")");
+                    
+                    // Rotate arrow based on expansion state
+                    if (getTreeItem() != null && getTreeItem().isExpanded()) {
+                        arrowIcon.setRotate(90);
+                    } else {
+                        arrowIcon.setRotate(0);
+                    }
+                    
+                    setText(null);
+                    setGraphic(headerBox);
+                    
+                    // Remove selection background (focus effect) and ensure text stays dark
+                    setStyle("-fx-background-color: transparent; -fx-text-fill: #2C3E50; -fx-selection-bar: transparent; -fx-selection-bar-non-focused: transparent;");
+                    
+                } else if (item instanceof List) {
+                    // Asset Row
+                    setText(null);
+                    List<Asset> rowAssets = (List<Asset>) item;
+                    
+                    updateRowBox(rowBox, cardPool, rowAssets);
+                    setGraphic(rowBox);
+                    setStyle("-fx-background-color: transparent; -fx-padding: 0; -fx-selection-bar: transparent; -fx-selection-bar-non-focused: transparent;");
+                }
+            }
+        }
+    }
+
 }

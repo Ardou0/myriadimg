@@ -15,6 +15,8 @@ public class Tag {
      */
     public enum TagType {
         MANUAL,     // Added by user
+        TYPE,
+        LOCATION,   // Extracted from EXIF (City, Country)
         AI_SCENE,   // Detected scene (Beach, Mountain)
         AI_OBJECT,  // Detected object (Car, Dog)
         AI_PERSON   // Detected face/person

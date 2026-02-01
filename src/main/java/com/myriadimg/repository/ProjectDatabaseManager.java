@@ -250,9 +250,6 @@ public class ProjectDatabaseManager {
     }
 
     private void addColumn(Statement stmt, String tableName, String columnName, String columnDefinition) throws SQLException {
-        // Remove PRIMARY KEY or AUTOINCREMENT from definition if adding a column, as SQLite has limitations on ALTER TABLE
-        // Generally adding columns with constraints is tricky in SQLite, but for simple types it works.
-        // We strip PRIMARY KEY / AUTOINCREMENT because you can't add a PK column to an existing table easily.
         String safeDefinition = columnDefinition.replaceAll("(?i)PRIMARY KEY", "").replaceAll("(?i)AUTOINCREMENT", "").trim();
         
         String sql = "ALTER TABLE " + tableName + " ADD COLUMN " + columnName + " " + safeDefinition;
@@ -309,11 +306,13 @@ public class ProjectDatabaseManager {
     }
 
     /**
-     * Inserts a list of assets into the database in a single batch transaction.
-     * Uses 'INSERT OR IGNORE' to skip existing assets.
+     * Inserts or updates a list of assets into the database in a single batch transaction.
+     * It updates the asset metadata and refreshes tags.
      */
     public void batchInsertAssets(List<Asset> assets) {
-        String sql = "INSERT OR IGNORE INTO assets(path, hash, size, creation_date, type) VALUES(?,?,?,?,?)";
+        // Use INSERT OR REPLACE to update existing assets with new metadata (e.g. creation date)
+        String sql = "INSERT OR REPLACE INTO assets(path, hash, size, creation_date, type, thumbnail_blob) " +
+                     "VALUES(?,?,?,?,?, (SELECT thumbnail_blob FROM assets WHERE path = ?))";
 
         try (Connection conn = connect()) {
             conn.setAutoCommit(false);
@@ -324,9 +323,34 @@ public class ProjectDatabaseManager {
                     pstmt.setLong(3, asset.getSize());
                     pstmt.setString(4, asset.getCreationDate() != null ? asset.getCreationDate().toString() : null);
                     pstmt.setString(5, asset.getType().name());
+                    pstmt.setString(6, asset.getPath());
                     pstmt.addBatch();
                 }
                 pstmt.executeBatch();
+                
+                // Handle the Tags
+                for (Asset asset : assets) {
+                    // Skip tag generation for ICON type
+                    if (asset.getType() == Asset.AssetType.ICON) {
+                        continue;
+                    }
+
+                    // TYPE tags
+                    String typeTagValue = asset.getType().name().toLowerCase();
+                    String typeTagPseudo = asset.getType() == Asset.AssetType.IMAGE ? "Photo" : "Video";
+                    int typeTagId = getOrCreateTag(conn, typeTagValue, typeTagPseudo, Tag.TagType.TYPE);
+                    addTagToAsset(conn, asset.getPath(), typeTagId, 1.0);
+                    
+                    // Handle other tags (e.g. LOCATION)
+                    if (asset.getTags() != null) {
+                        for (Tag tag : asset.getTags()) {
+                            if (tag.getType() == Tag.TagType.TYPE) continue;
+                            int otherTagId = getOrCreateTag(conn, tag.getValue(), tag.getPseudo(), tag.getType());
+                            addTagToAsset(conn, asset.getPath(), otherTagId, 1.0);
+                        }
+                    }
+                }
+                
                 conn.commit();
             } catch (SQLException e) {
                 conn.rollback();
@@ -334,28 +358,6 @@ public class ProjectDatabaseManager {
             }
         } catch (SQLException e) {
             throw new DatabaseException("Batch insert failed", e);
-        }
-    }
-    
-    public void cleanupNonMediaAssets() {
-        // Dynamically build the list of allowed types from the Enum
-        StringBuilder allowedTypes = new StringBuilder();
-        for (Asset.AssetType type : Asset.AssetType.values()) {
-            if (!allowedTypes.isEmpty()) {
-                allowedTypes.append(", ");
-            }
-            allowedTypes.append("'").append(type.name()).append("'");
-        }
-
-        String sql = "DELETE FROM assets WHERE type NOT IN (" + allowedTypes + ")";
-        try (Connection conn = connect();
-             Statement stmt = conn.createStatement()) {
-            int deleted = stmt.executeUpdate(sql);
-            if (deleted > 0) {
-                System.out.println("Cleaned up " + deleted + " non-media assets from database.");
-            }
-        } catch (SQLException e) {
-            throw new DatabaseException("Failed to cleanup non-media assets", e);
         }
     }
 
@@ -433,7 +435,7 @@ public class ProjectDatabaseManager {
     
     public List<String> getAssetsWithoutThumbnail() {
         List<String> paths = new ArrayList<>();
-        String sql = "SELECT path FROM assets WHERE thumbnail_blob IS NULL AND (type = 'IMAGE' OR type = 'VIDEO')";
+        String sql = "SELECT path FROM assets WHERE (thumbnail_blob IS NULL OR thumbnail_blob = '') AND (type = 'IMAGE' OR type = 'VIDEO' or type = 'ICON')";
         try (Connection conn = connect();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
@@ -471,50 +473,55 @@ public class ProjectDatabaseManager {
         return hashes;
     }
 
-    public Set<String> getAllAssetPaths() {
-        Set<String> paths = new HashSet<>();
-        String sql = "SELECT path FROM assets";
+    public Map<String, String> getAssetPathToHashMap() {
+        Map<String, String> map = new HashMap<>();
+        String sql = "SELECT path, hash FROM assets";
         try (Connection conn = connect();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
-                paths.add(rs.getString("path"));
+                map.put(rs.getString("path"), rs.getString("hash"));
             }
         } catch (SQLException e) {
-            throw new DatabaseException("Failed to load asset paths", e);
+            throw new DatabaseException("Failed to load asset path-hash map", e);
         }
-        return paths;
+        return map;
     }
-
-    // Tag Management Methods
 
     /**
      * Retrieves a tag ID by its value, or creates it if it doesn't exist.
      * This ensures tag uniqueness and reuse.
      */
     public int getOrCreateTag(String value, String pseudo, Tag.TagType type) {
+        try (Connection conn = connect()) {
+            return getOrCreateTag(conn, value, pseudo, type);
+        } catch (SQLException e) {
+            throw new DatabaseException("Error managing tag: " + value, e);
+        }
+    }
+
+    // Internal version that accepts a connection for transaction support
+    private int getOrCreateTag(Connection conn, String value, String pseudo, Tag.TagType type) throws SQLException {
         String selectSql = "SELECT id FROM tags WHERE value = ?";
         String insertSql = "INSERT INTO tags(value, pseudo, type) VALUES(?, ?, ?)";
 
-        try (Connection conn = connect()) {
-            try (PreparedStatement pstmt = conn.prepareStatement(selectSql)) {
-                pstmt.setString(1, value);
-                ResultSet rs = pstmt.executeQuery();
-                if (rs.next()) {
-                    return rs.getInt("id");
-                }
+        try (PreparedStatement pstmt = conn.prepareStatement(selectSql)) {
+            pstmt.setString(1, value);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getInt("id");
             }
+        }
 
-            try (PreparedStatement pstmt = conn.prepareStatement(insertSql, Statement.RETURN_GENERATED_KEYS)) {
-                pstmt.setString(1, value);
-                pstmt.setString(2, pseudo);
-                pstmt.setString(3, type.name());
-                pstmt.executeUpdate();
-                
-                ResultSet rs = pstmt.getGeneratedKeys();
-                if (rs.next()) {
-                    return rs.getInt(1);
-                }
+        try (PreparedStatement pstmt = conn.prepareStatement(insertSql, Statement.RETURN_GENERATED_KEYS)) {
+            pstmt.setString(1, value);
+            pstmt.setString(2, pseudo);
+            pstmt.setString(3, type.name());
+            pstmt.executeUpdate();
+            
+            ResultSet rs = pstmt.getGeneratedKeys();
+            if (rs.next()) {
+                return rs.getInt(1);
             }
         } catch (SQLException e) {
             throw new DatabaseException("Error managing tag: " + value, e);
@@ -523,9 +530,17 @@ public class ProjectDatabaseManager {
     }
 
     public void addTagToAsset(String assetPath, int tagId, double confidence) {
+        try (Connection conn = connect()) {
+            addTagToAsset(conn, assetPath, tagId, confidence);
+        } catch (SQLException e) {
+            throw new DatabaseException("Error linking tag to asset: " + assetPath, e);
+        }
+    }
+
+    // Internal version that accepts a connection for transaction support
+    private void addTagToAsset(Connection conn, String assetPath, int tagId, double confidence) throws SQLException {
         String sql = "INSERT OR IGNORE INTO asset_tags(asset_path, tag_id, confidence) VALUES(?, ?, ?)";
-        try (Connection conn = connect();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, assetPath);
             pstmt.setInt(2, tagId);
             pstmt.setDouble(3, confidence);
@@ -558,7 +573,7 @@ public class ProjectDatabaseManager {
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
-                assets.add(mapResultSetToAsset(rs));
+                assets.add(mapResultSetToAsset(conn, rs));
             }
         } catch (SQLException e) {
             throw new DatabaseException("Failed to get all assets", e);
@@ -573,7 +588,7 @@ public class ProjectDatabaseManager {
             pstmt.setString(1, path);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
-                    return mapResultSetToAsset(rs);
+                    return mapResultSetToAsset(conn, rs);
                 }
             }
         } catch (SQLException e) {
@@ -582,7 +597,7 @@ public class ProjectDatabaseManager {
         return null;
     }
     
-    private Asset mapResultSetToAsset(ResultSet rs) throws SQLException {
+    private Asset mapResultSetToAsset(Connection conn, ResultSet rs) throws SQLException {
         String path = rs.getString("path");
         String hash = rs.getString("hash");
         long size = rs.getLong("size");
@@ -590,6 +605,148 @@ public class ProjectDatabaseManager {
         LocalDateTime date = dateStr != null ? LocalDateTime.parse(dateStr) : null;
         Asset.AssetType type = Asset.AssetType.valueOf(rs.getString("type"));
         
-        return new Asset(path, hash, size, date, type);
+        Asset asset = new Asset(path, hash, size, date, type);
+        
+        // Load tags for this asset
+        List<Tag> tags = getTagsForAsset(conn, path);
+        asset.setTags(tags);
+        
+        return asset;
+    }
+
+    private List<Tag> getTagsForAsset(Connection conn, String assetPath) throws SQLException {
+        List<Tag> tags = new ArrayList<>();
+        String sql = """
+            SELECT t.id, t.value, t.pseudo, t.type 
+            FROM tags t 
+            JOIN asset_tags at ON t.id = at.tag_id 
+            WHERE at.asset_path = ?
+        """;
+        
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, assetPath);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    int id = rs.getInt("id");
+                    String value = rs.getString("value");
+                    String pseudo = rs.getString("pseudo");
+                    Tag.TagType type = Tag.TagType.valueOf(rs.getString("type"));
+                    tags.add(new Tag(id, value, pseudo, type));
+                }
+            }
+        }
+        return tags;
+    }
+
+    public Map<Tag.TagType, List<Tag>> getAllTagsGroupedByType() {
+        Map<Tag.TagType, List<Tag>> groupedTags = new EnumMap<>(Tag.TagType.class);
+        
+        // Initialize lists for all types
+        for (Tag.TagType type : Tag.TagType.values()) {
+            groupedTags.put(type, new ArrayList<>());
+        }
+
+        String sql = """
+            SELECT t.id, t.value, t.pseudo, t.type, COUNT(at.asset_path) as count
+            FROM tags t
+            LEFT JOIN asset_tags at ON t.id = at.tag_id
+            GROUP BY t.id
+            ORDER BY t.pseudo ASC
+        """;
+
+        try (Connection conn = connect();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            
+            while (rs.next()) {
+                int id = rs.getInt("id");
+                String value = rs.getString("value");
+                String pseudo = rs.getString("pseudo");
+                Tag.TagType type = Tag.TagType.valueOf(rs.getString("type"));
+                int count = rs.getInt("count");
+                Tag tag = new Tag(id, value, pseudo, type);
+                tag.setPseudo(pseudo + " (" + count + ")");
+                
+                groupedTags.get(type).add(tag);
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to load grouped tags", e);
+        }
+        
+        return groupedTags;
+    }
+
+    public void ensureTypeTagsExist() {
+        String sqlMissingTags = """
+            SELECT a.path, a.type 
+            FROM assets a 
+            LEFT JOIN asset_tags at ON a.path = at.asset_path 
+            LEFT JOIN tags t ON at.tag_id = t.id AND t.type = 'TYPE'
+            WHERE t.id IS NULL
+        """;
+        
+        try (Connection conn = connect()) {
+            conn.setAutoCommit(false);
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(sqlMissingTags)) {
+                
+                while (rs.next()) {
+                    String path = rs.getString("path");
+                    String typeStr = rs.getString("type");
+                    Asset.AssetType type = Asset.AssetType.valueOf(typeStr);
+                    
+                    // Skip ICON type
+                    if (type == Asset.AssetType.ICON) continue;
+                    
+                    String typeTagValue = type.name().toLowerCase();
+                    String typeTagPseudo = type == Asset.AssetType.IMAGE ? "Photo" : "Video";
+                    
+                    int tagId = getOrCreateTag(conn, typeTagValue, typeTagPseudo, Tag.TagType.TYPE);
+                    addTagToAsset(conn, path, tagId, 1.0);
+                }
+                conn.commit();
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to ensure type tags exist", e);
+        }
+    }
+    
+    public void cleanupOrphanedAssets() {
+        String sql = "DELETE FROM assets WHERE path NOT IN (SELECT path FROM assets)";
+        // This query doesn't make sense as written (deletes nothing).
+        // The goal is to remove assets from DB that no longer exist on disk.
+        // But the DB doesn't know about the disk state directly here.
+        // This method should probably take a list of valid paths and delete everything else.
+    }
+    
+    public void removeAssetsNotInList(Set<String> validPaths) {
+        if (validPaths == null) return;
+        
+        // This can be heavy if the list is huge.
+        // Alternative: Iterate over DB assets and check if they are in validPaths.
+        
+        String selectSql = "SELECT path FROM assets";
+        List<String> pathsToRemove = new ArrayList<>();
+        
+        try (Connection conn = connect();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(selectSql)) {
+            while (rs.next()) {
+                String path = rs.getString("path");
+                if (!validPaths.contains(path)) {
+                    pathsToRemove.add(path);
+                }
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Failed to identify orphaned assets", e);
+        }
+        
+        if (!pathsToRemove.isEmpty()) {
+            removeAssets(pathsToRemove);
+            System.out.println("Removed " + pathsToRemove.size() + " orphaned assets from database.");
+        }
     }
 }

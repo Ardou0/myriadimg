@@ -52,12 +52,12 @@ class ProjectDatabaseManagerTest {
         // First insert
         dbManager.batchInsertAssets(List.of(asset1));
         
-        // Second insert with same path (should be ignored due to INSERT OR IGNORE)
+        // Second insert with same path (should replace due to INSERT OR REPLACE)
         dbManager.batchInsertAssets(List.of(asset2));
 
         List<Asset> assets = dbManager.getAllAssets();
         assertEquals(1, assets.size());
-        assertEquals("hash1", assets.get(0).getHash(), "Should keep the first asset");
+        assertEquals("hash2", assets.get(0).getHash(), "Should update to the second asset (REPLACE behavior)");
     }
 
     @Test

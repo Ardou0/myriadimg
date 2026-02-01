@@ -130,6 +130,13 @@
             <version>2.19.0</version>
         </dependency>
 
+        <!-- Spatial4j for Geolocation -->
+        <dependency>
+            <groupId>org.locationtech.spatial4j</groupId>
+            <artifactId>spatial4j</artifactId>
+            <version>0.8</version>
+        </dependency>
+
         <!-- JavaCV / FFmpeg / OpenCV for High Performance HEIC decoding -->
         <dependency>
             <groupId>org.bytedeco</groupId>

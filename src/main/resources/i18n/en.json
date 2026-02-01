@@ -55,9 +55,12 @@
       "themes": "Themes"
     },
     "sidebar": {
+      "tags_type": "Types",
       "tags_ai": "Scenes (AI)",
       "people": "People",
       "tags_manual": "My Tags",
+      "tags_special": "Special Settings",
+      "show_icons": "Show Icons",
       "details": "Details",
       "no_selection": "No image selected",
       "summary_label": "Total:",

@@ -19,10 +19,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -101,7 +98,7 @@ class IndexingServiceTest {
         Files.writeString(tempDir.resolve("image2.png"), "content2");
         Files.writeString(tempDir.resolve("video1.mp4"), "content3");
         
-        when(dbManager.getAllHashes()).thenReturn(Collections.emptySet());
+        when(dbManager.getAssetPathToHashMap()).thenReturn(Collections.emptyMap());
 
         // 2. Act: Run the indexing service
         indexingService.call();
@@ -135,7 +132,10 @@ class IndexingServiceTest {
 
         // Simulate that the first file is already known in the DB
         String existingHash = calculatePartialHash(existingFile);
-        when(dbManager.getAllHashes()).thenReturn(new HashSet<>(Set.of(existingHash)));
+        Map<String, String> existingAssets = new HashMap<>();
+        existingAssets.put("existing.jpg", existingHash);
+        
+        when(dbManager.getAssetPathToHashMap()).thenReturn(existingAssets);
 
         // 2. Act
         indexingService.call();
@@ -161,7 +161,7 @@ class IndexingServiceTest {
         Files.createFile(tempDir.resolve("image.jpg"));
         Files.createFile(tempDir.resolve("document.txt"));
         Files.createFile(tempDir.resolve("archive.zip"));
-        when(dbManager.getAllHashes()).thenReturn(Collections.emptySet());
+        when(dbManager.getAssetPathToHashMap()).thenReturn(Collections.emptyMap());
 
         // 2. Act
         indexingService.call();
@@ -184,7 +184,7 @@ class IndexingServiceTest {
     @Test
     void testCall_WithEmptyDirectory_ShouldDoNothing() throws Exception {
         // 1. Arrange
-        when(dbManager.getAllHashes()).thenReturn(Collections.emptySet());
+        when(dbManager.getAssetPathToHashMap()).thenReturn(Collections.emptyMap());
 
         // 2. Act
         indexingService.call();
@@ -224,7 +224,7 @@ class IndexingServiceTest {
         Files.createFile(visibleDir.resolve(".DS_Store")); // Hidden file
         Files.createFile(visibleDir.resolve("valid.jpg")); // Valid file
 
-        when(dbManager.getAllHashes()).thenReturn(Collections.emptySet());
+        when(dbManager.getAssetPathToHashMap()).thenReturn(Collections.emptyMap());
 
         // 2. Act
         indexingService.call();

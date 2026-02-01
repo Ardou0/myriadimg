@@ -55,9 +55,12 @@
       "themes": "Thèmes"
     },
     "sidebar": {
+      "tags_type": "Types",
       "tags_ai": "Scènes (IA)",
       "people": "Personnes",
       "tags_manual": "Mes Tags",
+      "tags_special": "Paramètres spéciaux",
+      "show_icons": "Afficher les icônes",
       "details": "Détails",
       "no_selection": "Aucune image sélectionnée",
       "summary_label": "Total :",

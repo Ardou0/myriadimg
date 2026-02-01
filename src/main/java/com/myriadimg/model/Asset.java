@@ -1,6 +1,8 @@
 package com.myriadimg.model;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Represents a digital asset (image or video) managed by the application.
@@ -12,9 +14,10 @@ public class Asset {
     private long size;
     private LocalDateTime creationDate;
     private AssetType type;
+    private List<Tag> tags = new ArrayList<>();
 
     public enum AssetType {
-        IMAGE, VIDEO, UNKNOWN
+        IMAGE, VIDEO, ICON, UNKNOWN
     }
 
     public Asset(String path, String hash, long size, LocalDateTime creationDate, AssetType type) {
@@ -33,5 +36,17 @@ public class Asset {
 
     public void setCreationDate(LocalDateTime creationDate) {
         this.creationDate = creationDate;
+    }
+
+    public List<Tag> getTags() {
+        return tags;
+    }
+
+    public void setTags(List<Tag> tags) {
+        this.tags = tags;
+    }
+
+    public void addTag(Tag tag) {
+        this.tags.add(tag);
     }
 }
