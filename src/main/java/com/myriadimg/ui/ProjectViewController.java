@@ -612,7 +612,7 @@ public class ProjectViewController {
         searchField.setPromptText(i18n.get("project.search_placeholder"));
 
         typeTagsPane.setText(i18n.get("project.sidebar.tags_type"));
-        locationTagsPane.setText("Lieux"); // TODO: Add to i18n
+        locationTagsPane.setText(i18n.get("project.sidebar.tags_location"));
         aiTagsPane.setText(i18n.get("project.sidebar.tags_ai"));
         peoplePane.setText(i18n.get("project.sidebar.people"));
         manualTagsPane.setText(i18n.get("project.sidebar.tags_manual"));
